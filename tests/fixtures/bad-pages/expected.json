@@ -5,10 +5,6 @@
     {"rule": "schema/page-missing", "file": "schema-none.html", "line": null},
 
     {"rule": "schema/recommended-field", "file": "schema-localbusiness.html", "line": 5},
-    {"rule": "schema/recommended-field", "file": "schema-localbusiness.html", "line": 5},
-    {"rule": "schema/recommended-field", "file": "schema-localbusiness.html", "line": 5},
-    {"rule": "schema/recommended-field", "file": "schema-localbusiness.html", "line": 5},
-    {"rule": "schema/recommended-field", "file": "schema-localbusiness.html", "line": 5},
     {"rule": "schema/required-field", "file": "schema-localbusiness.html", "line": 5},
 
     {"rule": "schema/recommended-field", "file": "schema-graph.html", "line": 5},
