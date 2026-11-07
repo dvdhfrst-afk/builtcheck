@@ -8,8 +8,9 @@ if (major < 18) {
 }
 
 // When a reader such as "head" stops early, leave quietly with the result already decided.
+// Linux reports that as EPIPE, and Windows as EPIPE or EOF.
 process.stdout.on("error", (error) => {
-  if (error.code !== "EPIPE") throw error;
+  if (error.code !== "EPIPE" && error.code !== "EOF") throw error;
   process.exit(process.exitCode ?? 0);
 });
 

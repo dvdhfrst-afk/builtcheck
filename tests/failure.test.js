@@ -2,7 +2,7 @@
 // that fail. A run either gives a whole answer, or exits 2 and says what it could not do.
 
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -29,6 +29,16 @@ function inTemp(fn) {
   const folder = mkdtempSync(join(tmpdir(), "builtcheck-"));
   try {
     return fn(folder);
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
+}
+
+async function withSiteAsync(files, fn) {
+  const folder = mkdtempSync(join(tmpdir(), "builtcheck-"));
+  try {
+    for (const [name, text] of Object.entries(files)) writeFileSync(join(folder, name), text);
+    await fn(folder);
   } finally {
     rmSync(folder, { recursive: true, force: true });
   }
@@ -455,6 +465,24 @@ test("SARIF output names every rule and encodes paths", () => {
     for (const result of run0.results) assert.ok(ids.has(result.ruleId));
     assert.ok(run0.results.some((result) => result.locations[0].physicalLocation.artifactLocation.uri === "caf%C3%A9%20page.html"));
   });
+});
+
+test("a reader that stops early changes neither the exit code nor the error output", async () => {
+  const links = Array.from({ length: 5000 }, (_, i) => `<a href="/gone/${i}">x</a>`).join("");
+  const cases = [[["index.html", page(links)], [".", "--no-config", "--format", "json"], 1], [["index.html", page(links)], [".", "--no-config", "--all"], 1], [["index.html", page(links)], [".", "--no-config", "--only", "style/*", "--format", "html"], 0]];
+  for (const [[name, text], args, expected] of cases) {
+    await withSiteAsync({ [name]: text }, async (root) => {
+      const child = spawn(process.execPath, [BIN, ...args], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+      let stderr = "";
+      child.stderr.on("data", (data) => {
+        stderr += data;
+      });
+      child.stdout.once("data", () => child.stdout.destroy());
+      const code = await new Promise((done) => child.on("close", done));
+      assert.equal(stderr, "");
+      assert.equal(code, expected, args.join(" "));
+    });
+  }
 });
 
 // ---- Rule selection

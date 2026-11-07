@@ -243,11 +243,11 @@ Put a comment in the file. The same forms work in HTML comments, in CSS comments
 /*! builtcheck-ignore-next-line style/banned-font */
 ```
 
-Each report gives a count of the findings ignored this way.
+The text, JSON and HTML reports give a count of the findings ignored this way.
 
 ## Using it from code
 
-Installed as a package, it exports one synchronous function. The second argument has the shape of a config file, and the result has the shape of the JSON report.
+Installed as a package, it exports one synchronous function. The package is an ES module only: use `import`, in a `.mjs` file or a project with `"type": "module"`. The second argument has the shape of a config file, and the result has the shape of the JSON report.
 
 ```js
 import { audit } from "builtcheck";
@@ -321,7 +321,7 @@ Run the test suite, an end-to-end pass through the command line, and an install 
 sh check.sh
 ```
 
-`sh` comes with Git for Windows on Windows. Expected findings for the fixture sites in `tests/fixtures/` were written by hand in each `expected.json`, including a clean site that must produce none. A fixture's `llms.txt` is kept beside its site as `llms.fixture.txt`, and the tests add it to a temporary copy of the site.
+On Windows, run that from Git Bash, which comes with Git for Windows. Expected findings for the fixture sites in `tests/fixtures/` were written by hand in each `expected.json`, including a clean site that must produce none. A fixture's `llms.txt` is kept beside its site as `llms.fixture.txt`, and the tests add it to a temporary copy of the site.
 
 ## More
 
