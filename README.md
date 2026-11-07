@@ -174,7 +174,7 @@ Run the test suite and an end-to-end pass through the command line:
 sh check.sh
 ```
 
-Expected findings for the fixture sites in `tests/fixtures/` were written by hand in each `expected.json`, including a clean site that must produce none.
+Expected findings for the fixture sites in `tests/fixtures/` were written by hand in each `expected.json`, including a clean site that must produce none. A fixture's `llms.txt` is kept beside its site as `llms.fixture.txt`, and the tests add it to a temporary copy of the site.
 
 ## License
 

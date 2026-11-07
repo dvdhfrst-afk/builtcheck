@@ -1,6 +1,6 @@
 // Shared test helpers.
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,6 +22,25 @@ export function withSite(files, fn) {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+}
+
+function readTree(folder, prefix, files) {
+  for (const entry of readdirSync(folder, { withFileTypes: true })) {
+    const path = join(folder, entry.name);
+    if (entry.isDirectory()) readTree(path, `${prefix}${entry.name}/`, files);
+    else files[`${prefix}${entry.name}`] = readFileSync(path);
+  }
+  return files;
+}
+
+// Audits a copy of a fixture site. A site's llms.txt is kept beside it as llms.fixture.txt,
+// because archive tools commonly treat files of that name as tool instructions and drop them,
+// and a fixture must not change meaning when the repository is packaged.
+export function withFixtureSite(name, fn) {
+  const files = readTree(join(FIXTURES, name, "site"), "", {});
+  const llms = join(FIXTURES, name, "llms.fixture.txt");
+  if (existsSync(llms)) files["llms.txt"] = readFileSync(llms);
+  return withSite(files, fn);
 }
 
 // Turns off every rule group except the ones under test, so a case reads as one behavior.

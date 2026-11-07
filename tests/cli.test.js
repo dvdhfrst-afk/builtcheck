@@ -11,7 +11,7 @@ import { resolveConfig, ConfigError } from "../src/engine/config.js";
 import { formatHtml } from "../src/report/html.js";
 import { formatText } from "../src/report/text.js";
 import { allRules } from "../src/rules/index.js";
-import { FIXTURES, REPO_ROOT, page, withSite } from "./helpers.js";
+import { FIXTURES, REPO_ROOT, page, withFixtureSite, withSite } from "./helpers.js";
 
 const BIN = join(REPO_ROOT, "bin", "builtcheck.js");
 const CLEAN = join(FIXTURES, "clean-site", "site");
@@ -32,9 +32,11 @@ function inTempFolder(fn) {
 }
 
 test("exit code 0 on a clean site", () => {
-  const { code, out } = run([CLEAN]);
-  assert.equal(code, 0);
-  assert.ok(out.includes("No problems found"));
+  withFixtureSite("clean-site", (root) => {
+    const { code, out } = run([root]);
+    assert.equal(code, 0);
+    assert.ok(out.includes("No problems found"));
+  });
 });
 
 test("exit code 1 when there are errors", () => {

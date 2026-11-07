@@ -7,7 +7,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { audit } from "../src/audit.js";
-import { FIXTURES } from "./helpers.js";
+import { FIXTURES, withFixtureSite } from "./helpers.js";
 
 function keyOf({ rule, file, line }) {
   return `${rule} ${file} ${line === null ? "-" : line}`;
@@ -33,7 +33,7 @@ for (const name of sites) {
     const expected = JSON.parse(readFileSync(join(folder, "expected.json"), "utf8"));
     const configPath = join(folder, "config.json");
     const config = existsSync(configPath) ? JSON.parse(readFileSync(configPath, "utf8")) : {};
-    const result = audit(join(folder, "site"), config);
+    const result = withFixtureSite(name, (root) => audit(root, config));
 
     const actual = counted(result.findings.map(keyOf));
     const wanted = counted(expected.findings.map(keyOf));
@@ -54,7 +54,7 @@ for (const name of sites) {
 }
 
 test("the clean site reports zero errors and zero warnings", () => {
-  const { summary } = audit(join(FIXTURES, "clean-site", "site"));
+  const { summary } = withFixtureSite("clean-site", (root) => audit(root));
   assert.equal(summary.errors, 0);
   assert.equal(summary.warnings, 0);
 });
