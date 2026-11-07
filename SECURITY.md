@@ -16,7 +16,7 @@ The site being audited is treated as untrusted. You might run this on a build co
 - **Injection through reports.** File names and page text are escaped in the HTML report. Control characters and direction overrides are shown as escapes in text and GitHub output, so a page cannot move your terminal's cursor, hide lines, or start a workflow command in a continuous integration log.
 - **Hostile input that burns time.** Deep nesting, unclosed comments, long lines of wildcards, selector chains that backtrack, and similar inputs are bounded. `tests/failure.test.js` holds a timed case for each kind found.
 - **Decompression bombs.** A compressed sitemap is limited to 64 MiB (mebibytes) when decompressed.
-- **Large files.** A text file over 32 MiB is left out of the audit and named in the report.
+- **Large files.** A text file over 32 MiB is not read. The report names it, and the run exits 2 instead of passing.
 - **Losing a report.** `--output` writes a temporary file and renames it, so an interrupted run leaves any earlier report as it was. It refuses to write inside the site folder, and refuses a read-only target.
 
 ## What it does not defend against

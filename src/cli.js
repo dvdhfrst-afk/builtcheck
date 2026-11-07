@@ -1,7 +1,7 @@
 // The command line interface. Exit codes: 0 clean, 1 problems found, 2 could not run or could
 // not finish.
 
-import { accessSync, constants, existsSync, mkdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { accessSync, constants, existsSync, mkdirSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { audit, version } from "./audit.js";
 import { ConfigError, DEFAULT_SITE, readConfigFile } from "./engine/config.js";
@@ -202,6 +202,17 @@ function noPagesMessage(folder, root) {
   return `no HTML pages in ${folder}.${hint}`;
 }
 
+// A project folder holding a build gives a wall of false errors, because root-relative links do
+// not resolve from there. Better to say so than to audit it.
+function projectFolderMessage(folder, root, config) {
+  if (config?.site?.basePath) return null;
+  if (readdirSync(root).some((name) => /\.html?$/i.test(name))) return null;
+  const found = LIKELY_BUILD_FOLDERS.filter((name) => existsSync(join(root, name, "index.html")));
+  if (found.length === 0) return null;
+  const named = found.map((name) => `${folder.replace(/[\\/]+$/, "")}/${name}`).join(" or ");
+  return `${folder} has no page at its top level, so it looks like a project folder and not a build. Did you mean ${named}? If this really is the build, add --base-path /`;
+}
+
 function isSameOrInside(folder, path) {
   const fold = (text) => (process.platform === "win32" ? text.toLowerCase() : text);
   const parent = fold(folder);
@@ -306,13 +317,22 @@ export function main(argv, io) {
     const folder = options.positional[0];
     const root = requireFolder(folder);
     const config = loadConfig(options);
+    const notABuild = projectFolderMessage(folder, root, config);
+    if (notABuild) throw new UsageError(notABuild);
+    if (options.output) {
+      const configFile = options.config ?? (options["no-config"] ? null : DEFAULT_CONFIG_FILE);
+      if (configFile && reachedPath(resolve(configFile)) === reachedPath(resolve(options.output))) {
+        throw new UsageError(`--output ${options.output} is the config file, and the report would replace it. Write it somewhere else.`);
+      }
+    }
 
     const result = audit(root, config, allRules, { only: options.only, skip: options.skip });
     for (const { file, reason, incomplete } of result.skipped) {
       if (incomplete) io.stderr(`builtcheck: ${printable(file)}: ${printable(reason)}\n`);
     }
     if (result.summary.pages === 0) {
-      io.stderr(`builtcheck: ${printable(noPagesMessage(folder, root))}\n`);
+      const unread = result.skipped.some(({ incomplete }) => incomplete);
+      io.stderr(`builtcheck: ${printable(unread ? `no page in ${folder} could be read. See the messages above.` : noPagesMessage(folder, root))}\n`);
       return 2;
     }
     result.root = folder;

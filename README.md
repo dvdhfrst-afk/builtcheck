@@ -129,7 +129,7 @@ node bin/builtcheck.js --explain style/phone-overflow
 |---|---|
 | 0 | No errors, and warnings within any limit you set |
 | 1 | Errors, or more warnings than `--max-warnings` allows |
-| 2 | It could not run or could not finish: a missing folder, a folder with no HTML (HyperText Markup Language) pages, a bad config file, a bad option, or a file it could not read |
+| 2 | It could not run or could not finish: a missing folder, a folder with no HTML (HyperText Markup Language) pages, a bad config file, a bad option, or a file it could not read or that was too large |
 
 Exit code 2 never means your site passed. A folder with no pages is exit code 2 on purpose, because it usually means the build did not run. When a file cannot be read, as when another program has it locked, the audit still reports everything else and names the file under "Not covered by this audit", then exits 2, because a clean result would not be true.
 
@@ -257,14 +257,17 @@ if (!result.complete) console.error("Not everything could be read:", result.skip
 for (const finding of result.findings) console.log(finding.file, finding.line, finding.rule, finding.message);
 ```
 
-It throws for a folder it cannot open or an invalid config. A file it cannot read does not throw: it lands in `skipped`, and `complete` turns false.
+It throws for a folder it cannot open or an invalid config. A file it cannot read does not throw: it lands in `skipped`, and `complete` turns false. `complete` is also false for a folder with no pages, which is what the command line's exit code 2 stands for here, so check it.
 
 ## Troubleshooting
 
 | You see | What it means |
 |---|---|
 | `Folder not found` | The path is wrong, or it is relative to a different folder from the one the terminal is in. |
-| `no HTML pages in ...` | The build has not run, or this is the project folder and the output is in a folder inside it. The message names a likely one. |
+| `no HTML pages in ...` | The build has not run, or the pages are all ignored by your config. |
+| `looks like a project folder` | You pointed it at the project, and the build is in a folder inside it. The message names it. |
+| `is a file path, not a URL path` | Git Bash on Windows rewrites arguments that start with `/`. Write `--base-path //docs` there, or set `basePath` in a config file. |
+| `outside the base path` | The base path you gave is probably wrong, and links it leaves out are not checked. |
 | Many broken links that work when deployed | The site deploys under a path. Set `--base-path`, or see "Limits" for links that only exist at run time. |
 | `is inside the site folder` | `--output` points inside the audited folder. Write the report somewhere else. |
 | `Did you mean` or `is not an option of` | A mistyped name in the config. `--list-rules` and `--explain` show the right ones. |
@@ -293,7 +296,7 @@ These come with reading static files instead of running a browser:
 - Links to other hosts are not fetched, so a dead external link is not reported.
 - Social image sizes are read for PNG and JPEG only. Other formats get no size check.
 - `style/phone-overflow` knows Tailwind-style utility classes and plain CSS. Other class naming that carries a size in its name needs `classPatterns`.
-- A text file over 32 MiB (mebibytes) is left out of the audit and named in the report. Such a file still counts as existing for link checks.
+- A text file over 32 MiB (mebibytes) is not read. The report names it and the exit code is 2. To accept that, list it under `ignore` in the config. Such a file still counts as existing for link checks.
 - Memory grows with the size of the largest pages and with the number of findings. A very large site with a very large number of findings can run out of memory, which ends the run with a non-zero exit code and no report.
 
 ## How it works

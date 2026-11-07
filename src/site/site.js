@@ -215,6 +215,7 @@ export class Site {
 
     if (!this.ownHost) this.ownHost = this.inferOwnHost();
     if (!config.site.basePath && this.basePath === "") this.basePath = this.inferBasePath() || this.inferBasePathFromReferences();
+    this.outsideBasePath = this.countOutsideBasePath();
     this.sampledPaths = null;
     for (const summary of this.pages) {
       summary.ownUrl = baseUrlForFile(summary.file, this);
@@ -232,7 +233,7 @@ export class Site {
     const path = join(this.root, file);
     try {
       if (statSync(path).size > limit) {
-        this.skip(file, `larger than ${Math.round(limit / (1024 * 1024))} MiB, so it was not read`);
+        this.skip(file, `larger than ${Math.round(limit / (1024 * 1024))} MiB, so it was not read. Add it to "ignore" in the config to leave it out on purpose`, true);
         return null;
       }
       return readFileSync(path);
@@ -352,6 +353,13 @@ export class Site {
         }
       }
     }
+  }
+
+  // How many of the sampled references fall outside the base path, and so go unchecked.
+  countOutsideBasePath() {
+    if (this.basePath === "") return { outside: 0, total: 0 };
+    const outside = this.sampledPaths.filter((path) => path !== this.basePath && !path.startsWith(`${this.basePath}/`) && !this.externalPath(path));
+    return { outside: outside.length, total: this.sampledPaths.length };
   }
 
   // A build with no sitemap can still show its base path: when most root-relative references

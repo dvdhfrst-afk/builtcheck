@@ -2,7 +2,7 @@
 
 Every rule has a default severity and can be turned off or changed in the config file. Everything below is a default, and any list of names, types, paths or patterns can be replaced. See the [README](../README.md#configuration) for the config format.
 
-Pages are "indexable" when they are not an error page, do not ask not to be indexed, are not a redirect, and do not name a different page as canonical. A page that reloads itself with no target URL is not a redirect.
+Pages are "indexable" when they are not an error page or an application's fallback shell (a file named `404`, `500`, `200`, `fallback`, `not-found` or `error`, with or without a leading underscore), do not ask not to be indexed, are not a redirect, and do not name a different page as canonical. A page that reloads itself with no target URL is not a redirect.
 
 ## Foundation
 
@@ -86,6 +86,7 @@ Top-level nodes, `@graph` members and `mainEntity` are held to these requirement
 | `links/broken-asset` | error | An image, script, stylesheet, font or other referenced file is not in the build, including `srcset` and `imagesrcset` candidates, SVG `use` and `image`, and CSS `url()` and `@import`. An `img` or `script` with an empty `src` counts, unless it has lazy loading attributes. |
 | `links/generic-no-destination` | error | A "Read more" style link has no href, a dead href, or a link to its own page. |
 | `links/placeholder-href` | warning | Any other link with a placeholder href such as `#` that is not wired up as a control. |
+| `links/outside-base-path` | warning | Over half of the root-relative links and files sampled from the pages lie outside the base path. Those are treated as another application and not checked, so a wrong base path would otherwise hide broken links. |
 
 Options:
 
@@ -127,7 +128,7 @@ Options:
 - `style/banned-font`: `fonts` lists the families (default Inter, Roboto, Helvetica, Open Sans). A family name matches with or without a `Variable` suffix, and `Inter Tight` is not `Inter`. `checkFallbacks` (default `false`) also reports fonts later in a stack. `ignoreFiles` lists file globs.
 - `style/phone-overflow`: `phoneWidth` (default 390), `spacingUnit` (pixels per spacing step, default 4), `rootFontSize` (default 16). `classPatterns` adds class checks: each entry is a regular expression string, or an object of `pattern` and `message`. `ignoreUnused` is described below.
 
-All three rules take `ignoreUnused` (default `true`), which skips CSS whose selector matches nothing on any page, such as the unused parts of a framework. Selectors with states like `:hover` count as used when the element exists. A class that only a script adds looks unused, so set this to `false` to check everything. Selectors this tool cannot read are always checked.
+All three rules take `ignoreUnused` (default `true`), which skips CSS whose selector matches nothing on any page, such as the unused parts of a framework. A `<style>` block answers only for its own page. Selectors with states like `:hover` count as used when the element exists. A class that only a script adds looks unused, so set this to `false` to check everything. Selectors this tool cannot read are always checked.
 
 The grid check is `(columns - 1) * gap > phoneWidth`. Classes that only apply at a larger breakpoint do not reach a phone, so `md:grid-cols-12 md:gap-10` is fine, and `grid-cols-12 gap-2 md:gap-10` is too. Classes such as `max-md:gap-10` do reach a phone. Hidden elements, positioned decoration, and anything inside a wrapper that scrolls or clips (by class, inline style or stylesheet) are not reported.
 

@@ -57,6 +57,9 @@ function validateSite(site) {
       throw new ConfigError(`site.${key} must be an array of strings`);
     }
   }
+  if (site.basePath && /^\/?[a-zA-Z]:[\\/]/.test(site.basePath)) {
+    throw new ConfigError(`site.basePath is a file path, not a URL path such as /docs: ${site.basePath}. Git Bash on Windows rewrites arguments that start with /, so write //docs there, or set it in a config file.`);
+  }
   if (site.url) {
     let url;
     try {

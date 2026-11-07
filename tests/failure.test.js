@@ -184,11 +184,85 @@ test("a read-only report file is left as it was, or replaced whole", () => {
 test("a page larger than the limit is left out, and says so", () => {
   withSite({ "index.html": page("x"), "big.html": Buffer.alloc(MAX_TEXT_BYTES + 1, 0x20), "big.css": Buffer.alloc(MAX_TEXT_BYTES + 1, 0x20) }, (root) => {
     const result = audit(root, {});
-    assert.equal(result.complete, true);
+    assert.equal(result.complete, false);
     assert.deepEqual(result.skipped.map((entry) => entry.file).sort(), ["big.css", "big.html"]);
     assert.equal(result.summary.pages, 1);
     assert.match(formatText(result), /Not covered by this audit[^]*big\.html: larger than 32 MiB/);
     assert.match(formatHtml(result), /Not covered by this audit/);
+    assert.equal(run([".", "--no-config"], root).code, 2);
+    const accepted = audit(root, { ignore: ["big.html", "big.css"] });
+    assert.equal(accepted.complete, true);
+    assert.equal(accepted.skipped.length, 0);
+  });
+});
+
+test("when the only page is too large, the message says that and not that the build did not run", () => {
+  withSite({ "index.html": Buffer.alloc(MAX_TEXT_BYTES + 1, 0x20) }, (root) => {
+    const { code, err } = run([".", "--no-config"], root);
+    assert.equal(code, 2);
+    assert.match(err, /larger than 32 MiB/);
+    assert.match(err, /no page in \. could be read/);
+    assert.doesNotMatch(err, /run the build/);
+  });
+});
+
+test("a project folder with a build inside it is named, not audited", () => {
+  withSite({ "package.json": "{}", "dist/index.html": page('<a href="/about/">x</a>'), "dist/about/index.html": page("x") }, (root) => {
+    const { code, out, err } = run([".", "--no-config"], root);
+    assert.equal(code, 2);
+    assert.equal(out, "");
+    assert.match(err, /looks like a project folder/);
+    assert.match(err, /Did you mean \.\/dist\?/);
+    noStack(err);
+    assert.notEqual(run(["dist", "--no-config"], root).code, 2);
+    assert.notEqual(run([".", "--no-config", "--base-path", "/"], root).code, 2);
+  });
+  withSite({ "index.html": page("x"), "public/index.html": page("x") }, (root) => {
+    assert.notEqual(run([".", "--no-config"], root).code, 2, "a page at the top level means this is a build");
+  });
+});
+
+test("audit() does not call a folder with no pages complete", () => {
+  withSite({ "readme.md": "x" }, (root) => {
+    const result = audit(root, { rules: { "foundation/*": "off" } });
+    assert.equal(result.summary.pages, 0);
+    assert.equal(result.complete, false);
+  });
+});
+
+test("a file path for the base path is refused, with what to do in Git Bash", () => {
+  withSite({ "index.html": page("x") }, (root) => {
+    for (const value of ["C:/Program Files/Git/docs", "/C:/Program Files/Git/docs", "D:\\docs"]) {
+      const { code, err } = run([".", "--no-config", "--base-path", value], root);
+      assert.equal(code, 2, value);
+      assert.match(err, /is a file path[^]*\/\/docs/);
+    }
+  });
+});
+
+test("a wrong base path is called out, since it would hide broken links", () => {
+  const body = '<a href="/gone/">a</a><a href="/also-gone/">b</a><link rel="stylesheet" href="/none.css"><img alt="" src="/none.png">';
+  withSite({ "index.html": page(body) }, (root) => {
+    const rule = (config) => audit(root, config).findings.filter((finding) => finding.rule === "links/outside-base-path");
+    const [found] = rule({ site: { basePath: "/nope" } });
+    assert.match(found.message, /4 of 4 root-relative[^]*outside the base path \/nope/);
+    assert.equal(rule({}).length, 0);
+    assert.equal(rule({ site: { basePath: "/nope", externalPaths: ["/gone/", "/also-gone/", "/none.css", "/none.png"] } }).length, 0);
+  });
+  withSite({ "index.html": page('<a href="/docs/x">a</a><a href="/docs/y">b</a><a href="/docs/z">c</a><a href="/pricing">d</a><a href="/about">e</a>'), "x.html": page("x"), "y.html": page("x"), "z.html": page("x") }, (root) => {
+    assert.equal(audit(root, { site: { basePath: "/docs" } }).findings.filter((finding) => finding.rule === "links/outside-base-path").length, 0, "a docs site can link to the main site");
+  });
+});
+
+test("--output cannot replace the config file", () => {
+  withSite({ "site/index.html": page("x"), "c.json": "{}", "builtcheck.config.json": "{}" }, (root) => {
+    for (const args of [["site", "--config", "c.json", "--output", "c.json"], ["site", "--output", "builtcheck.config.json"]]) {
+      const { code, err } = run(args, root);
+      assert.equal(code, 2);
+      assert.match(err, /is the config file/);
+    }
+    assert.equal(readFileSync(join(root, "c.json"), "utf8"), "{}");
+    assert.equal(readFileSync(join(root, "builtcheck.config.json"), "utf8"), "{}");
   });
 });
 

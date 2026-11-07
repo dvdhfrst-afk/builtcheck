@@ -296,4 +296,15 @@ function phrasesReportedElsewhere(site) {
   return settings.options.phrases.map((phrase) => phrase.toLowerCase());
 }
 
-export const linkRules = [brokenInternal, missingAnchor, brokenAsset, genericNoDestination, placeholderHref];
+const outsideBasePath = {
+  id: "links/outside-base-path",
+  severity: "warning",
+  description: "Most root-relative links point outside the base path, so they are not checked. The base path is probably wrong.",
+  site({ site, report }) {
+    const { outside, total } = site.outsideBasePath;
+    if (outside < 2 || outside * 2 <= total) return;
+    report({ file: "(site)", message: `${outside} of ${total} root-relative links and files sampled are outside the base path ${site.basePath}, so they were not checked. Is the base path right?` });
+  },
+};
+
+export const linkRules = [brokenInternal, missingAnchor, brokenAsset, genericNoDestination, placeholderHref, outsideBasePath];

@@ -84,9 +84,9 @@ Text from the site goes through an escape step in the `github` and `text` format
 | `root` | The folder as given on the command line. |
 | `site.host` | The site's own host, set or inferred, or `null` if neither. |
 | `site.basePath` | The path the site deploys under, set or inferred. `/` means none. |
-| `complete` | False when a file could not be read or a rule failed. The findings are then not the whole story, and the exit code is 2. |
+| `complete` | False when a file could not be read or was too large, a rule failed, or there were no pages. The findings are then not the whole story, and the exit code is 2. |
 | `summary.suppressed` | Findings removed by ignore comments. They are not in `findings`. |
 | `findings` | Sorted by file, then line, then column. `line` and `column` are `null` when a finding is about a whole file. `file` is relative to the site folder and always uses `/`. |
-| `skipped` | Files left out, each with `file`, `reason` and `incomplete`. A file that is simply too large has `incomplete: false`: it is named, but it does not change the exit code. One that could not be read has `incomplete: true`. |
+| `skipped` | Files left out, each with `file`, `reason` and `incomplete`. One that could not be read or was too large has `incomplete: true`. A symbolic link that leaves the site folder or leads nowhere has `incomplete: false`: it is named, but it does not change the exit code. |
 
 Rule ids and severities are the contract for matching findings. The wording of `message` can change between versions, so do not match on it.

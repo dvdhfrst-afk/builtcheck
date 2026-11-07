@@ -24,8 +24,9 @@ export function audit(root, userConfig = {}, rules = allRules, selection = {}) {
     resultVersion: RESULT_VERSION,
     root,
     site: { host: site.ownHost, basePath: site.basePath || "/" },
-    // False when a file could not be read or a rule failed: the findings are then not the whole story.
-    complete: !site.skipped.some((entry) => entry.incomplete),
+    // False when there were no pages, a file could not be read or a rule failed: the findings are
+    // then not the whole story.
+    complete: site.pages.length > 0 && !site.skipped.some((entry) => entry.incomplete),
     summary: {
       errors: count("error"),
       warnings: count("warning"),
