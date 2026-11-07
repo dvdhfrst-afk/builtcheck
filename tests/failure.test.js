@@ -3,7 +3,7 @@
 
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -148,6 +148,36 @@ test("a rule that throws loses nothing else and makes the audit incomplete", () 
     for (const format of [formatText, formatHtml, formatGithub, formatJson]) assert.match(format(result), /failed here/);
     assert.match(formatSarif(result, allRules), /failed here/);
     assert.equal(JSON.parse(formatSarif(result, allRules)).runs[0].invocations[0].executionSuccessful, false);
+  });
+});
+
+test("a file with no read permission makes the audit incomplete, and exits 2 with the report", (context) => {
+  withSite({ "index.html": page("<p>TODO</p>"), "secret.html": page("x"), "secret.css": "a{}", "site.png": "x" }, (root) => {
+    for (const name of ["secret.html", "secret.css"]) chmodSync(join(root, name), 0o000);
+    try {
+      readFileSync(join(root, "secret.html"));
+      context.skip("this user can read every file, as root can and Windows modes allow");
+      return;
+    } catch {
+      // Denied, as the test needs.
+    }
+    const { code, out, err } = run([".", "--no-config"], root);
+    assert.equal(code, 2);
+    assert.match(out, /Not covered by this audit[^]*secret\.css[^]*secret\.html/);
+    assert.match(out, /copy\/placeholder-text/);
+    assert.match(err, /incomplete/i);
+    noStack(err);
+  });
+});
+
+test("a read-only report file is left as it was, or replaced whole", () => {
+  withSite({ "site/index.html": page("x"), "r.txt": "keep" }, (root) => {
+    chmodSync(join(root, "r.txt"), 0o444);
+    const { code } = run(["site", "--no-config", "--output", "r.txt"], root);
+    const text = readFileSync(join(root, "r.txt"), "utf8");
+    if (code === 2) assert.equal(text, "keep");
+    else assert.match(text, /errors?,/);
+    assert.deepEqual(readdirSync(root).filter((name) => name.endsWith(".tmp")), []);
   });
 });
 

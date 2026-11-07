@@ -219,7 +219,11 @@ function writeReport(path, report, root) {
     writeFileSync(temporary, report);
     renameSync(temporary, target);
   } catch (error) {
-    rmSync(temporary, { force: true });
+    try {
+      rmSync(temporary, { force: true });
+    } catch {
+      // The folder itself may be what failed, and then there is nothing to remove.
+    }
     throw new UsageError(`Cannot write ${path}: ${plainError(error)}`);
   }
 }
