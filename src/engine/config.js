@@ -214,7 +214,7 @@ export function readConfigFile(path) {
     // Some shells write redirected output as UTF-16 with a byte order mark.
     text = buffer[0] === 0xff && buffer[1] === 0xfe ? buffer.toString("utf16le") : buffer.toString("utf8");
   } catch (error) {
-    const reason = { ENOENT: "no such file", EISDIR: "that path is a folder", EACCES: "permission denied", EPERM: "permission denied" }[error.code];
+    const reason = { ENOENT: "no such file", EISDIR: "that path is a folder", EACCES: "permission denied", EPERM: "permission denied", EBUSY: "the file is locked by another program", ENOTDIR: "part of that path is not a folder" }[error.code];
     throw new ConfigError(`Cannot read config file ${path}: ${reason ?? error.message}`);
   }
   try {

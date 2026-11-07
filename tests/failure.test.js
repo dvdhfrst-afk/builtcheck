@@ -3,7 +3,7 @@
 
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -259,6 +259,50 @@ test("a report that cannot be written exits 2, and the previous one is left as i
     assert.match(overFolder.err, /Cannot write target/);
     assert.deepEqual(readdirSync(join(root, "target")), ["x"]);
     assert.deepEqual(readdirSync(root).filter((name) => name.endsWith(".tmp")), []);
+  });
+});
+
+test("a report through a symbolic link replaces the file it names and keeps the link", (context) => {
+  withSite({ "site/index.html": page("x"), "real.txt": "old" }, (root) => {
+    try {
+      symlinkSync(join(root, "real.txt"), join(root, "link.txt"));
+      symlinkSync(join(root, "site"), join(root, "into-site"), "junction");
+    } catch (error) {
+      if (error.code === "EPERM") {
+        context.skip("creating symbolic links needs a privilege here");
+        return;
+      }
+      throw error;
+    }
+    assert.notEqual(run(["site", "--no-config", "--output", "link.txt"], root).code, 2);
+    assert.ok(lstatSync(join(root, "link.txt")).isSymbolicLink());
+    assert.match(readFileSync(join(root, "real.txt"), "utf8"), /errors?,/);
+    const inside = run(["site", "--no-config", "--output", join("into-site", "r.txt")], root);
+    assert.equal(inside.code, 2);
+    assert.match(inside.err, /inside the site folder/);
+  });
+});
+
+test("the saved report line counts in the singular", () => {
+  withSite({ "site/index.html": page("x"), "c.json": JSON.stringify({ rules: { "*": "off", "foundation/robots-missing": "error", "copy/em-dash": "warning" } }) }, (root) => {
+    assert.match(run(["site", "--config", "c.json", "--output", "r.txt"], root).out, /^1 error, 0 warnings\. Report written/);
+  });
+});
+
+test("a config saved as UTF-8 or UTF-16 with a byte order mark is read", () => {
+  withSite({ "site/index.html": page("x") }, (root) => {
+    const text = '{"rules":{"*":"off"}}';
+    writeFileSync(join(root, "a.json"), `\ufeff${text}`);
+    writeFileSync(join(root, "b.json"), Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(text, "utf16le")]));
+    for (const file of ["a.json", "b.json"]) assert.equal(run(["site", "--config", file], root).code, 0, file);
+  });
+});
+
+test("an unprintable character in a message reaches the terminal escaped", () => {
+  withSite({ "index.html": page("x") }, (root) => {
+    const { err } = run([`no-such-${ESCAPE}[2J`], root);
+    assert.ok(!err.includes(ESCAPE));
+    assert.match(err, /Folder not found/);
   });
 });
 

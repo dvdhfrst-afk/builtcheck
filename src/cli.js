@@ -1,8 +1,8 @@
 // The command line interface. Exit codes: 0 clean, 1 problems found, 2 could not run or could
 // not finish.
 
-import { existsSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve, sep } from "node:path";
+import { accessSync, constants, existsSync, mkdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { audit, version } from "./audit.js";
 import { ConfigError, DEFAULT_SITE, readConfigFile } from "./engine/config.js";
 import { formatGithub } from "./report/github.js";
@@ -187,6 +187,9 @@ function plainError(error) {
     ENOTDIR: "part of that path is not a folder",
     ENOENT: "no such file or folder",
     ENAMETOOLONG: "the path is too long",
+    ELOOP: "the path loops through symbolic links",
+    EMFILE: "too many files are open",
+    EIO: "the disk reported an error",
   };
   return reasons[error.code] ?? error.message;
 }
@@ -208,13 +211,38 @@ function isSameOrInside(folder, path) {
 
 // Writes beside the target and renames over it, so a failed or interrupted run leaves the
 // previous report as it was instead of half of a new one.
+// The path a write will really reach, through any symbolic link in the file or its folders.
+function reachedPath(path) {
+  for (const [base, rest] of [[path, ""], [dirname(path), basename(path)]]) {
+    try {
+      return join(realpathSync(base), rest);
+    } catch {
+      // Not there yet, so try its folder.
+    }
+  }
+  return path;
+}
+
+function refuse(code) {
+  throw Object.assign(new Error(code), { code });
+}
+
+// Writes the whole report or none of it: an interrupted or failed run leaves any earlier report
+// as it was. A device or pipe has no content to protect, and renaming over one would replace it.
 function writeReport(path, report, root) {
-  const target = resolve(path);
-  if (isSameOrInside(root, target)) {
+  const target = reachedPath(resolve(path));
+  if (isSameOrInside(root, resolve(path)) || isSameOrInside(reachedPath(root), target)) {
     throw new UsageError(`--output ${path} is inside the site folder. A report there would be audited, and deployed, as part of the site. Write it somewhere else.`);
   }
   const temporary = `${target}.${process.pid}.tmp`;
   try {
+    const existing = statSync(target, { throwIfNoEntry: false });
+    if (existing?.isDirectory()) refuse("EISDIR");
+    if (existing && !existing.isFile()) {
+      writeFileSync(target, report);
+      return;
+    }
+    if (existing) accessSync(target, constants.W_OK);
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(temporary, report);
     renameSync(temporary, target);
@@ -284,7 +312,7 @@ export function main(argv, io) {
       if (incomplete) io.stderr(`builtcheck: ${printable(file)}: ${printable(reason)}\n`);
     }
     if (result.summary.pages === 0) {
-      io.stderr(`builtcheck: ${noPagesMessage(folder, root)}\n`);
+      io.stderr(`builtcheck: ${printable(noPagesMessage(folder, root))}\n`);
       return 2;
     }
     result.root = folder;
@@ -293,7 +321,7 @@ export function main(argv, io) {
     const { errors, warnings } = result.summary;
     if (options.output) {
       writeReport(options.output, report, root);
-      io.stdout(`${errors} errors, ${warnings} warnings. Report written to ${options.output}\n`);
+      io.stdout(`${errors} error${errors === 1 ? "" : "s"}, ${warnings} warning${warnings === 1 ? "" : "s"}. Report written to ${printable(options.output)}\n`);
     } else {
       io.stdout(report);
     }
@@ -307,7 +335,7 @@ export function main(argv, io) {
     return 0;
   } catch (error) {
     if (error instanceof UsageError || error instanceof ConfigError) {
-      io.stderr(`builtcheck: ${error.message}\n`);
+      io.stderr(`builtcheck: ${printable(error.message)}\n`);
       return 2;
     }
     if (error.code) {
