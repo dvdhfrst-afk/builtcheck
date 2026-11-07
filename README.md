@@ -2,45 +2,136 @@
 
 builtcheck audits a built static site folder such as `dist/`. It reads the files your build produced and reports the problems that page speed audits and link checkers leave out: a sitemap that disagrees with the pages, a social image of the wrong size, structured data missing the fields its type needs, "Read more" links that go nowhere, placeholder text that shipped, a grid that cannot fit on a phone.
 
-It runs offline with no browser, does no network requests, never changes the site folder, and has no dependencies. It needs Node.js 18 or newer and nothing else: no install step and no build step.
+It runs offline with no browser, makes no network requests, never changes the site folder, and has no dependencies. It needs Node.js 18 or newer and nothing else.
 
-## Quick start
+## Install
 
-From a clone of this repository, point it at a built folder:
+You need [Node.js](https://nodejs.org) 18 or newer. Check with:
 
 ```bash
-node bin/builtcheck.js path/to/dist
+node --version
 ```
 
-Sample output:
+builtcheck is not on the npm registry, so `npm install builtcheck` will not find it. Get a copy of this repository, by cloning or downloading it, and open a terminal in that folder. It runs from there with no install step and no build step:
+
+```bash
+node bin/builtcheck.js --version
+```
+
+To get a `builtcheck` command that works from any folder, pack the repository and install the package file it makes:
+
+```bash
+npm pack
+```
+
+```bash
+npm install --global builtcheck-1.0.0.tgz
+```
+
+```bash
+builtcheck --version
+```
+
+To add it to one project instead, run `npm install --save-dev` with the path to that same file, then `npx builtcheck`. The rest of this page uses `node bin/builtcheck.js`, which is the same program.
+
+## First run
+
+Try it on the sample site in this repository, which has a problem of nearly every kind:
+
+```bash
+node bin/builtcheck.js examples/before --no-config --quiet
+```
+
+`--quiet` lists errors only. This is the output in full:
 
 ```text
 about/index.html
-  6:1      warning  Social image /img/wide.png is 1200x675, expected 1200x630  foundation/page-social-image-size
+  15:4     error    Placeholder text (template text): "Your text here."  copy/placeholder-text
 
-extra.html
-           warning  Page is not listed in the sitemap  foundation/sitemap-missing-page
-  6:1      error    Social image /img/missing.png is not in the build  foundation/page-social-image-broken
+blog/first-loaf/index.html
+  7:1      error    JSON-LD block has no schema.org "@context"  schema/missing-context
+  14:1     error    Link /blog/ does not resolve to any file in the build  links/broken-internal
+
+index.html
+  7:35     error    Placeholder text (lorem ipsum) in the description meta tag: "Lorem ipsum dolor sit amet."  copy/placeholder-text
+  8:1      error    Social image https://www.example.com/img/share.png is not in the build  foundation/page-social-image-broken
+  10:1     error    Bakery "Harbor Street Bakery" is missing "address"  schema/required-field
+  15:34    error    Link /menu/ does not resolve to any file in the build  links/broken-internal
+  15:60    error    Link #order points at an id that is not on this page  links/missing-anchor
+  19:1     error    Referenced file /img/loaf.png does not resolve to any file in the build  links/broken-asset
+  20:1     error    "Read more" link has no destination  links/generic-no-destination
+
+og-default.png
+           error    Default social image is 1200x675, expected 1200x630  foundation/social-image-size
 
 robots.txt
   2        error    robots.txt blocks GPTBot from the site ("Disallow: /")  foundation/robots-blocks-crawler
 
 sitemap.xml
-  4:8      error    Sitemap lists https://www.example.com/gone/, but the build has no page there  foundation/sitemap-stale-url
+  4:8      error    Sitemap lists https://www.example.com/menu/, but the build has no page there  foundation/sitemap-stale-url
   5:8      error    Sitemap URL points at a local address: http://localhost:4321/about/  foundation/sitemap-host
 
-4 errors, 2 warnings in 4 pages, 0 stylesheets.
+styles.css
+  8:3      error    12 grid columns need 440px for gaps alone, wider than a 390px phone  style/phone-overflow
+
+15 errors, 14 warnings in 3 pages, 1 stylesheet.
 ```
 
-To add it to a build, run it after the build step and let the exit code fail the job. This repository is not published as a package, so keep a copy of it next to your project or inside it, and call `bin/builtcheck.js` by path.
+[examples/README.md](examples/README.md) walks through that site and a fixed copy of it, which comes back clean.
+
+## Check your own site
+
+Build your site first, then point builtcheck at the folder the build wrote. Common defaults:
+
+| Generator | Folder |
+|---|---|
+| Astro | `dist` |
+| Next.js static export | `out` |
+| Hugo | `public` |
+| Eleventy | `_site` |
+| Docusaurus | `build` |
+
+```bash
+node bin/builtcheck.js path/to/dist
+```
+
+If your site lives under a path such as `/docs`, or absolute links name your own domain, tell it so. Both are usually worked out from the build, and the report does better when they are stated:
+
+```bash
+node bin/builtcheck.js path/to/dist --site-url https://www.example.com --base-path /docs
+```
+
+### Reading a first report
+
+Fix errors first. An **error** means something is definitely broken or missing. A **warning** means a recommendation or a style preference, and warnings alone do not fail a run.
+
+Four warning rules are matters of taste, and a site can reasonably disagree with all of them: `copy/em-dash`, `copy/double-hyphen`, `style/pure-color` and `style/banned-font` (by default Inter, Roboto, Helvetica and Open Sans). They can run to hundreds of findings on a large site, so the text report names them at the end. To leave them out of one run:
+
+```bash
+node bin/builtcheck.js path/to/dist --skip copy/em-dash,copy/double-hyphen,style/pure-color,style/banned-font
+```
+
+To decide for good, write a starter config and set them to `"off"`:
+
+```bash
+node bin/builtcheck.js --init
+```
+
+To see what a rule looks for and which options it takes:
+
+```bash
+node bin/builtcheck.js --explain style/phone-overflow
+```
+
+## Exit codes
 
 | Exit code | Meaning |
 |---|---|
 | 0 | No errors, and warnings within any limit you set |
 | 1 | Errors, or more warnings than `--max-warnings` allows |
-| 2 | It could not run: a missing folder, a folder with no HTML (HyperText Markup Language) pages, a bad config file, a bad option |
+| 2 | It could not run or could not finish: a missing folder, a folder with no HTML (HyperText Markup Language) pages, a bad config file, a bad option, or a file it could not read |
 
-A folder with no pages is exit code 2 on purpose, because it usually means the build did not run.
+Exit code 2 never means your site passed. A folder with no pages is exit code 2 on purpose, because it usually means the build did not run. When a file cannot be read, as when another program has it locked, the audit still reports everything else and names the file under "Not covered by this audit", then exits 2, because a clean result would not be true.
 
 ## What it checks
 
@@ -56,27 +147,35 @@ node bin/builtcheck.js --list-rules
 - **Copy:** em dashes and `--` in visible text (never in code, attributes or scripts), duplicate headings and subheads, and placeholder text.
 - **Style:** pure black and white in any notation and configured fonts, in CSS (Cascading Style Sheets), `<style>` blocks and inline styles; layouts that overflow at phone width in those and in utility classes. CSS that matches nothing on any page is skipped, so an unused part of a framework is not reported.
 
-Severities follow one idea: an **error** means something is definitely broken or missing, and a **warning** means a recommendation or a style preference. Warnings do not fail a run unless you ask:
+Choose rules for one run with `--only` and `--skip`, which take rule ids and groups separated by commas. To fail on any warning, use `--max-warnings`:
 
 ```bash
-node bin/builtcheck.js dist --max-warnings 0
+node bin/builtcheck.js path/to/dist --only "links/*,schema/*"
+```
+
+```bash
+node bin/builtcheck.js path/to/dist --max-warnings 0
 ```
 
 ## Output formats
 
-Text is the default. It collapses a finding repeated across many files, and caps one rule within one file, so a large report stays readable. Use `--all` to list everything, or `--quiet` to list errors only.
+Text is the default. It collapses a finding repeated across many files, and caps one rule within one file, so a large report stays readable. Use `--all` to list everything, or `--quiet` to list errors only. Run `node bin/builtcheck.js --help` for every option.
 
-JSON (JavaScript Object Notation), for other tools. Each finding has `rule`, `severity`, `message`, `file`, `line` and `column`. `line` and `column` are `null` when a finding is about a whole file.
-
-```bash
-node bin/builtcheck.js dist --format json --output report.json
-```
+`--output` writes any format to a file. The file is written whole or not at all, so a failed or interrupted run leaves an earlier report as it was. It refuses a path inside the site folder, where the report would be deployed with the site.
 
 A single self-contained HTML report with filters by severity and rule:
 
 ```bash
-node bin/builtcheck.js dist --format html --output report.html
+node bin/builtcheck.js path/to/dist --format html --output report.html
 ```
+
+JSON (JavaScript Object Notation), for other tools:
+
+```bash
+node bin/builtcheck.js path/to/dist --format json --output report.json
+```
+
+`github` prints workflow annotations for GitHub Actions, and `sarif` writes SARIF (Static Analysis Results Interchange Format) for code scanning tools. [docs/ci.md](docs/ci.md) has a workflow to copy and the details of the JSON report: which fields you can rely on, and what `complete` and `skipped` mean.
 
 ## Configuration
 
@@ -101,7 +200,7 @@ builtcheck reads `builtcheck.config.json` from the current folder if there is on
 
 **`rules`** maps a rule id, a group such as `"copy/*"`, or `"*"` to a severity (`"error"`, `"warning"` or `"off"`), or a rule id to an object of `severity` and options. An exact rule entry beats a group entry wherever it appears in the file. Setting options on a rule turns it on at its default severity even when a group turned it off. Options you leave out keep their defaults. An object option such as `required` merges by key, so you can change one type's field list and leave the others alone.
 
-To see every default, as a file you can start from:
+To see every default, as text you can start a config from:
 
 ```bash
 node bin/builtcheck.js --print-config
@@ -146,25 +245,64 @@ Put a comment in the file. The same forms work in HTML comments, in CSS comments
 
 Each report gives a count of the findings ignored this way.
 
-## How it works
+## Using it from code
 
-`src/html/` is a tolerant hand-written tokenizer and tree builder, and `src/css/` is a simple scanner with a selector matcher and a cascade. None of them throws on broken input. They record source offsets, which is how findings get a line and column, even inside minified files and `style` attributes. The cascade works out what reaches an element on a page: the stylesheets it loads in order, `@import`, media queries, layers, specificity and `!important`. What depends on a width or a state, such as `:hover`, is kept apart from what always applies.
+Installed as a package, it exports one synchronous function. The second argument has the shape of a config file, and the result has the shape of the JSON report.
 
-`src/site/` loads a build: pages, stylesheets, sitemaps, `robots.txt`, redirects, image sizes, and how a URL maps to a file. `src/rules/` holds the rules, and `src/engine/` runs them, applies config and ignore comments, then sorts and removes duplicates. `src/report/` writes the three formats.
+```js
+import { audit } from "builtcheck";
 
-A rule is a plain object with an `id`, a `severity`, a `description`, default `options`, and one or more of `page`, `stylesheet` and `site` functions that call `report()`. To add one, write the object and list it in `src/rules/index.js`, and config, docs checks and reports pick it up.
+const result = audit("dist", { rules: { "style/*": "off" } });
+if (!result.complete) console.error("Not everything could be read:", result.skipped);
+for (const finding of result.findings) console.log(finding.file, finding.line, finding.rule, finding.message);
+```
+
+It throws for a folder it cannot open or an invalid config. A file it cannot read does not throw: it lands in `skipped`, and `complete` turns false.
+
+## Troubleshooting
+
+| You see | What it means |
+|---|---|
+| `Folder not found` | The path is wrong, or it is relative to a different folder from the one the terminal is in. |
+| `no HTML pages in ...` | The build has not run, or this is the project folder and the output is in a folder inside it. The message names a likely one. |
+| Many broken links that work when deployed | The site deploys under a path. Set `--base-path`, or see "Limits" for links that only exist at run time. |
+| `is inside the site folder` | `--output` points inside the audited folder. Write the report somewhere else. |
+| `Did you mean` or `is not an option of` | A mistyped name in the config. `--list-rules` and `--explain` show the right ones. |
+| `Not covered by this audit`, exit code 2 | A file could not be read, usually a lock or a permission. Its reason is printed beside it. Fix that and run again. |
+| `this is a bug in builtcheck` | It is. Set the `BUILTCHECK_DEBUG` environment variable to `1` and run again to see where, then report it. |
+
+## What has been tested
+
+builtcheck has no public track record yet. This is what was actually run, and every number here comes from those runs.
+
+- **Test suite:** on Node.js 18.20.8, on Windows 11 and on Ubuntu under the Windows Subsystem for Linux, as an unprivileged user there so file permissions and symbolic links were exercised. It was also run on Node.js 24 on Windows. macOS has not been tried.
+- **Real sites:** three real Astro builds of 78, 43 and 3 pages. Every distinct error was checked by hand against the files. All were real but one: a sentence that used `[your company]` as an example was reported as a placeholder.
+- **Other generators:** Next.js, Hugo, Eleventy and Docusaurus sites have **not** been built and audited. `tests/generators.test.js` uses pages written by hand to follow the markup each is known to emit, which guards against known false alarms but is not the same as real output. Expect some surprises there.
+- **Scale:** 10,001 generated pages, 318 MB (megabytes) of HTML, on Node.js 18.20.8 with an Intel Core i7-14700F and 32 GB of memory under Windows 11: 45 to 55 seconds, with a peak of 135 to 315 MB of memory across runs. On Node.js 24 the same run reached about 510 MB. A generated site with about 400,000 findings finished in under 10 seconds with its files already read once, using up to 1.5 GB for SARIF, the largest format, and about 600 MB for JSON or HTML.
+- **Failure:** locked files, denied reads, read-only and full output targets, a process killed partway through, and 70 or so hostile inputs of the kinds in `tests/failure.test.js`, on Windows and on Linux. See [SECURITY.md](SECURITY.md) for what it does and does not defend against.
+- **Not run for real:** the workflow in `docs/ci.md` on GitHub Actions, and a SARIF upload to a code scanning service.
 
 ## Limits
 
 These come with reading static files instead of running a browser:
 
-- Pages and links that JavaScript creates at run time are not seen. Audit the output of a server-side or static render.
+- Pages and links that JavaScript creates at run time are not seen. Audit the output of a server-side or static render. A client-side application shell has little for this tool to read.
 - Classes a script adds cannot be seen. CSS aimed only at such a class looks unused and is skipped; set `ignoreUnused` to `false` to check it. Text a stylesheet hides until a script changes an inline style looks hidden.
 - Layout checks are arithmetic on class names and CSS values. They catch a grid whose gaps alone cannot fit and fixed widths, not every overflow a browser would show.
 - Links to a path outside the base path are treated as another application on the same host, so they are not checked.
-- Links to other hosts are not fetched.
+- Links to other hosts are not fetched, so a dead external link is not reported.
 - Social image sizes are read for PNG and JPEG only. Other formats get no size check.
 - `style/phone-overflow` knows Tailwind-style utility classes and plain CSS. Other class naming that carries a size in its name needs `classPatterns`.
+- A text file over 32 MiB (mebibytes) is left out of the audit and named in the report. Such a file still counts as existing for link checks.
+- Memory grows with the size of the largest pages and with the number of findings. A very large site with a very large number of findings can run out of memory, which ends the run with a non-zero exit code and no report.
+
+## How it works
+
+`src/html/` is a tolerant hand-written tokenizer and tree builder, and `src/css/` is a simple scanner with a selector matcher and a cascade. None of them throws on broken input. They record source offsets, which is how findings get a line and column, even inside minified files and `style` attributes. The cascade works out what reaches an element on a page: the stylesheets it loads in order, `@import`, media queries, layers, specificity and `!important`. What depends on a width or a state, such as `:hover`, is kept apart from what always applies.
+
+`src/site/` loads a build: pages, stylesheets, sitemaps, `robots.txt`, redirects, image sizes, and how a URL maps to a file. It makes one pass over the pages to learn what the site holds, and a second to run the rules, keeping one parsed page in memory at a time. `src/rules/` holds the rules, and `src/engine/` runs them, applies config and ignore comments, then sorts and removes duplicates. `src/report/` writes the formats.
+
+A rule is a plain object with an `id`, a `severity`, a `description`, default `options`, and one or more of `page`, `stylesheet` and `site` functions that call `report()`. To add one, write the object and list it in `src/rules/index.js`, and config, docs checks and reports pick it up.
 
 ## Running the tests
 
@@ -174,13 +312,17 @@ Run the test suite:
 npm test
 ```
 
-Run the test suite and an end-to-end pass through the command line:
+Run the test suite, an end-to-end pass through the command line, and an install of the packed package:
 
 ```bash
 sh check.sh
 ```
 
-Expected findings for the fixture sites in `tests/fixtures/` were written by hand in each `expected.json`, including a clean site that must produce none. A fixture's `llms.txt` is kept beside its site as `llms.fixture.txt`, and the tests add it to a temporary copy of the site.
+`sh` comes with Git for Windows on Windows. Expected findings for the fixture sites in `tests/fixtures/` were written by hand in each `expected.json`, including a clean site that must produce none. A fixture's `llms.txt` is kept beside its site as `llms.fixture.txt`, and the tests add it to a temporary copy of the site.
+
+## More
+
+[CHANGELOG.md](CHANGELOG.md), [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md).
 
 ## License
 
