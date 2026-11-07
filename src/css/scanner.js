@@ -83,14 +83,14 @@ export function scanCss(text) {
 
   const context = () => {
     const atRules = [];
-    let selector = "";
+    const selectorPath = [];
     let block = 0;
     for (const entry of stack) {
       block = entry.id;
       if (entry.prelude.startsWith("@")) atRules.push(entry.prelude);
-      else selector = entry.prelude;
+      else selectorPath.push(entry.prelude);
     }
-    return { atRules, selector, block };
+    return { atRules, selector: selectorPath[selectorPath.length - 1] ?? "", selectorPath, block };
   };
 
   const finishStatement = (from, to) => {
@@ -121,7 +121,7 @@ export function scanCss(text) {
       important = true;
       value = value.slice(0, bang.index);
     }
-    const { atRules, selector, block } = context();
+    const { atRules, selector, selectorPath, block } = context();
     declarations.push({
       property: property.startsWith("--") ? property : property.toLowerCase(),
       value,
@@ -129,6 +129,7 @@ export function scanCss(text) {
       offset,
       valueOffset: valueStart,
       selector,
+      selectorPath,
       atRules,
       block,
     });
@@ -188,22 +189,69 @@ export function scanCss(text) {
   return { declarations, statements, comments };
 }
 
-const URL_FUNCTION = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)"']*?))\s*\)/gi;
+// Each url(...) in a value: { url, index, end }. Written as a scan rather than one regular
+// expression, because a file full of unclosed "url(" would make that take minutes.
+function urlFunctions(value) {
+  const found = [];
+  const open = /url\(/gi;
+  for (let match = open.exec(value); match; match = open.exec(value)) {
+    let i = open.lastIndex;
+    while (i < value.length && /\s/.test(value[i])) i += 1;
+    const quote = value[i];
+    let url;
+    let close;
+    if (quote === '"' || quote === "'") {
+      const endQuote = value.indexOf(quote, i + 1);
+      if (endQuote === -1) break;
+      url = value.slice(i + 1, endQuote);
+      close = value.indexOf(")", endQuote);
+    } else {
+      close = value.indexOf(")", i);
+      url = close === -1 ? "" : value.slice(i, close).trim();
+    }
+    if (close === -1) break;
+    found.push({ url, index: match.index, end: close + 1 });
+    open.lastIndex = close + 1;
+  }
+  return found;
+}
 
 // Finds url(...) references in a declaration value or statement prelude.
 export function findUrls(value) {
-  const urls = [];
-  for (const match of value.matchAll(URL_FUNCTION)) {
-    urls.push({ url: match[1] ?? match[2] ?? match[3] ?? "", index: match.index });
-  }
-  return urls;
+  return urlFunctions(value).map(({ url, index }) => ({ url, index }));
 }
 
 // Blanks strings and url() so that value scanners do not read file names as colors.
 export function blankStringsAndUrls(value) {
-  return value
-    .replace(/url\(\s*(?:"[^"]*"|'[^']*'|[^)]*)\s*\)/gi, (match) => " ".repeat(match.length))
-    .replace(/"[^"]*"|'[^']*'/g, (match) => " ".repeat(match.length));
+  let result = "";
+  let at = 0;
+  for (const { index, end } of urlFunctions(value)) {
+    result += value.slice(at, index) + " ".repeat(end - index);
+    at = end;
+  }
+  result += value.slice(at);
+  return result.replace(/"[^"]*"|'[^']*'/g, (match) => " ".repeat(match.length));
+}
+
+// The offset just past the rule or statement that follows `from`.
+export function nextRuleEnd(text, from) {
+  let i = from;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === '"' || ch === "'") {
+      i = skipString(text, i);
+    } else if (text.startsWith("/*", i)) {
+      const close = text.indexOf("*/", i + 2);
+      i = close === -1 ? text.length : close + 2;
+    } else if (ch === ";") {
+      return i + 1;
+    } else if (ch === "{") {
+      return skipBalancedBlock(text, i);
+    } else {
+      i += 1;
+    }
+  }
+  return text.length;
 }
 
 export function importTarget(statement) {

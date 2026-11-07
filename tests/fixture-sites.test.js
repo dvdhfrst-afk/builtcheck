@@ -24,7 +24,7 @@ const sites = readdirSync(FIXTURES, { withFileTypes: true })
   .map((entry) => entry.name);
 
 test("the fixture folder holds the expected sites", () => {
-  assert.deepEqual(sites.sort(), ["bad-foundation", "bad-pages", "clean-site", "no-foundation"]);
+  assert.deepEqual(sites.sort(), ["bad-foundation", "bad-pages", "clean-site", "no-foundation", "styled-site"]);
 });
 
 for (const name of sites) {

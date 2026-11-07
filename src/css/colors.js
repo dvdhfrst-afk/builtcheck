@@ -5,7 +5,34 @@ import { blankStringsAndUrls } from "./scanner.js";
 
 const HEX = /#([0-9a-fA-F]{3,8})(?![\w-])/g;
 const KEYWORD = /(?<![-\w#.])(black|white)(?![-\w])/gi;
-const FUNCTION = /(?<![-\w])(rgba?|hsla?|hwb|oklch|oklab|lch|lab|color)\(([^()]*)\)/gi;
+const FUNCTION = /(?<![-\w])(rgba?|hsla?|hwb|oklch|oklab|lch|lab|color)\(((?:[^()]|\([^()]*\))*)\)/gi;
+
+// Utility frameworks compile "bg-white" to rgb(255 255 255 / var(--tw-bg-opacity, 1)), which is
+// opaque unless another class sets that variable. Any other var() can hold anything, except
+// that its fallback says what the author expects.
+function resolveVariables(argumentText) {
+  return argumentText
+    .replace(/var\(\s*--tw-[\w-]*opacity\s*(?:,[^()]*)?\)/gi, "1")
+    .replace(/var\(\s*--[\w-]+\s*,\s*([^()]*)\)/gi, "$1");
+}
+
+// color-mix(in srgb, #000 50%, transparent) is not black. Blanks each call, keeping offsets.
+function blankColorMix(value) {
+  let result = value;
+  const open = /color-mix\(/gi;
+  for (let match = open.exec(value); match; match = open.exec(value)) {
+    let depth = 1;
+    let i = open.lastIndex;
+    while (i < value.length && depth > 0) {
+      if (value[i] === "(") depth += 1;
+      else if (value[i] === ")") depth -= 1;
+      i += 1;
+    }
+    result = result.slice(0, match.index) + " ".repeat(i - match.index) + result.slice(i);
+    open.lastIndex = i;
+  }
+  return result;
+}
 
 function classifyHex(digits) {
   const hex = digits.toLowerCase();
@@ -44,7 +71,9 @@ function lightness(text, scale) {
 }
 
 function classifyFunction(name, argumentText) {
-  const parts = argumentText.trim().split(/[\s,/]+/).filter(Boolean);
+  const resolved = resolveVariables(argumentText);
+  if (resolved.includes("(")) return null;
+  const parts = resolved.trim().split(/[\s,/]+/).filter(Boolean);
   const kind = name.toLowerCase();
   if (kind === "rgb" || kind === "rgba") {
     if (!isOpaque(parts[3])) return null;
@@ -95,7 +124,7 @@ function classifyFunction(name, argumentText) {
 
 // Returns [{ color: "black" | "white", text, index }] in order of appearance.
 export function findPureColors(value) {
-  const scanned = blankStringsAndUrls(value);
+  const scanned = blankColorMix(blankStringsAndUrls(value));
   const found = [];
   for (const match of scanned.matchAll(HEX)) {
     const color = classifyHex(match[1]);

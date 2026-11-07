@@ -436,7 +436,7 @@ test("hyphen patterns: dashes are reported, flags and rules are not", () => {
   for (const text of report) {
     assert.ok(findingsFor({ "index.html": page(`<p>${text}</p>`) }, "copy/double-hyphen").length >= 1, text);
   }
-  const clean = ["--verbose", "run (--verbose) now", "a --- b", "-----", "<!-- c -->", "a -&gt; b", "&lt;-- back", "forth --&gt;"];
+  const clean = ["--verbose", "run (--verbose) now", "a --- b", "-----", "<!-- c -->", "a -&gt; b", "&lt;-- back", "forth --&gt;", "See https://x.example/a--b/c now", "xn--bcher-kva.example", "my--file.txt"];
   for (const text of clean) {
     assert.deepEqual(findingsFor({ "index.html": page(`<p>${text}</p>`) }, "copy/double-hyphen"), [], text);
   }
@@ -466,12 +466,12 @@ test("a heading wrapped in a section with a repeating subhead is found, and a lo
 });
 
 test("placeholder patterns catch what they should and leave real copy alone", () => {
-  const report = ["FIXME", "Date: TBD", "XXX", "text goes here", "Insert your logo here", "user@example.com", "000-000-0000", "123-456-7890", "${name}", "<%= name %>", "NaN", "null", "[FILL: title]", "[Your name]", "(555) 555-1234"];
+  const report = ["FIXME", "Date: TBD", "XXX", "XXXX-XXXX", "text goes here", "sample text", "Your Company Name, all rights reserved", "{% if x %}", "Insert your logo here", "user@example.com", "000-000-0000", "123-456-7890", "${name}", "<%= name %>", "NaN", "null", "[FILL: title]", "[Your name]", "(555) 555-1234"];
   for (const text of report) {
     const safe = text.replace(/</g, "&lt;");
     assert.equal(findingsFor({ "index.html": page(`<p>${safe}</p>`) }, "copy/placeholder-text").length, 1, text);
   }
-  const clean = ["A todo list", "Coming soon to Sampleville", "null and void", "NaN is a number", "our XXL van", "Enter your email here", "Call (801) 555-0100", "[Note: open daily]", "hello@example.com"];
+  const clean = ["A todo list", "Coming soon to Sampleville", "null and void", "NaN is a number", "our XXL van", "Enter your email here", "Call (801) 555-0100", "[Note: open daily]", "hello@example.com", "We replace furnaces right here in Ogden.", "Replace your old water heater here and save.", "Insert the new filter here, arrow toward the blower.", "We print your business name on every truck.", "Get your company name on the map.", "Text us a sample text and we reply in minutes.", "Super Bowl XXX was in Tempe."];
   for (const text of clean) {
     assert.deepEqual(findingsFor({ "index.html": page(`<p>${text}</p>`) }, "copy/placeholder-text"), [], text);
   }
@@ -487,7 +487,7 @@ test("placeholder patterns can be added to or replaced", () => {
 // ---- style
 
 test("pure colors are found in style blocks, files and attributes, with the right line", () => {
-  const files = { "index.html": "<style>\n\n.a{color:#000}\n</style>\n<p style='color:white'>x</p>", "a.css": "\n\nb{color:#fff}" };
+  const files = { "index.html": "<style>\n\n.a{color:#000}\n</style>\n<p class='a' style='color:white'>x<b>y</b></p>", "a.css": "\n\nb{color:#fff}" };
   const found = findingsFor(files, "style/pure-color");
   assert.deepEqual(found.map((f) => `${f.file}:${f.line}`), ["a.css:3", "index.html:3", "index.html:5"]);
 });
@@ -504,19 +504,19 @@ test("custom properties are checked, except the ignored ones", () => {
 });
 
 test("files and third party widget selectors can be excluded from color checks", () => {
-  const files = { "vendor/x.css": "a{color:#000}", "map.css": ".maplibregl-popup{background:#fff}.mine-popup{background:#fff}", "index.html": page("x") };
+  const files = { "vendor/x.css": "a{color:#000}", "map.css": ".maplibregl-popup{background:#fff}.mine-popup{background:#fff}", "index.html": page('<div class="maplibregl-popup"></div><div class="mine-popup"></div><a>x</a>') };
   const found = findingsFor(files, "style/pure-color", { rules: { "style/pure-color": { ignoreFiles: ["vendor/**"] } } });
   assert.deepEqual(messages(found), ["Pure white (#fff) in background of .mine-popup"]);
 });
 
 test("a banned font is reported only as the first choice, unless asked", () => {
-  const files = { "a.css": "a{font-family:Georgia,Inter,serif}b{font-family:'Inter Variable',serif}c{font-family:Inter Tight}", "index.html": page("x") };
+  const files = { "a.css": "a{font-family:Georgia,Inter,serif}b{font-family:'Inter Variable',serif}c{font-family:Inter Tight}", "index.html": page("<a>x</a><b>y</b><c>z</c>") };
   assert.equal(findingsFor(files, "style/banned-font").length, 1);
   assert.equal(findingsFor(files, "style/banned-font", { rules: { "style/banned-font": { checkFallbacks: true } } }).length, 2);
 });
 
 test("the banned font list is configurable", () => {
-  const files = { "a.css": "a{font-family:Papyrus}b{font-family:Inter}", "index.html": page("x") };
+  const files = { "a.css": "a{font-family:Papyrus}b{font-family:Inter}", "index.html": page("<a>x</a><b>y</b>") };
   const found = findingsFor(files, "style/banned-font", { rules: { "style/banned-font": { fonts: ["papyrus"] } } });
   assert.deepEqual(lines(found), [1]);
   assert.ok(found[0].message.includes("Papyrus"));
@@ -568,7 +568,7 @@ test("extra class patterns can be configured", () => {
 });
 
 test("CSS grids are checked by the media query they sit in", () => {
-  const check = (css) => findingsFor({ "a.css": css, "index.html": page("x") }, "style/phone-overflow");
+  const check = (css) => findingsFor({ "a.css": css, "index.html": page('<div class="g">x</div>') }, "style/phone-overflow");
   assert.equal(check(".g{grid-template-columns:repeat(12,1fr);gap:40px}").length, 1);
   assert.equal(check(".g{grid-template-columns:repeat(12,1fr);column-gap:2.5rem}").length, 1);
   assert.equal(check(".g{grid-template-columns:repeat(12,1fr);gap:0 40px}").length, 1);
@@ -587,9 +587,9 @@ test("CSS grids are checked by the media query they sit in", () => {
 
 test("ignore-file and rule groups in comments work in every file type", () => {
   const files = {
-    "index.html": "<!-- builtcheck-ignore-file copy/em-dash -->\n<p>a &mdash; b</p>\n<p>c -- d</p>",
-    "a.css": "/*! builtcheck-ignore-file */\na{color:#000}",
-    "b.css": "/* builtcheck-ignore-file style/banned-font */\na{color:#000}",
+    "index.html": "<!-- builtcheck-ignore-file copy/em-dash -->\n<p>a &mdash; b</p>\n<p>c -- d<b>e</b></p>",
+    "a.css": "/*! builtcheck-ignore-file */\nb{color:#000}",
+    "b.css": "/* builtcheck-ignore-file style/banned-font */\nb{color:#000}",
     "robots.txt": "User-agent: *\n# builtcheck-ignore-next-line foundation/robots-blocks-crawler\nDisallow: /\n# builtcheck-ignore-file foundation/robots-sitemap\n",
   };
   const result = withSite(files, (root) =>

@@ -34,6 +34,14 @@ export function globToRegExp(glob) {
   return new RegExp(`${pattern}$`);
 }
 
+// The ways people write a path to skip: "./drafts/**", "/drafts/**", "drafts\\**", "drafts/"
+// and plain "drafts" all mean the same folder.
+export function expandFileGlob(glob) {
+  const clean = glob.trim().replace(/\\/g, "/").replace(/^(?:\.\/|\/)+/, "");
+  if (clean.endsWith("/")) return [`${clean}**`];
+  return /[*?]/.test(clean) ? [clean] : [clean, `${clean}/**`];
+}
+
 export function makeMatcher(globs) {
   const patterns = globs.map(globToRegExp);
   return (path) => patterns.some((pattern) => pattern.test(path));

@@ -3,8 +3,6 @@
 import { gunzipSync } from "node:zlib";
 import { decodeEntities } from "../html/entities.js";
 
-const LOC = /<loc\b[^>]*>\s*(?:<!\[CDATA\[)?([^]*?)(?:\]\]>)?\s*<\/loc\s*>/gi;
-
 function blankXmlComments(text) {
   return text.replace(/<!--[^]*?-->/g, (match) => match.replace(/[^\n]/g, " "));
 }
@@ -12,11 +10,21 @@ function blankXmlComments(text) {
 // Returns { kind: "urlset" | "index", locs: [{ url, offset }] }, or null if neither root exists.
 export function parseSitemapXml(text) {
   const xml = blankXmlComments(text);
-  const kind = /<sitemapindex[\s>]/i.test(xml) ? "index" : /<urlset[\s>]/i.test(xml) ? "urlset" : null;
-  if (!kind) return null;
+  const root = /<(?:([\w.-]+):)?(sitemapindex|urlset)[\s>]/i.exec(xml);
+  if (!root) return null;
+  const kind = root[2].toLowerCase() === "urlset" ? "urlset" : "index";
+  // Only the sitemap's own <loc>: an image:loc inside a URL entry is something else.
+  const name = root[1] ? `${root[1]}:loc` : "loc";
+  const open = new RegExp(`<${name}(?=[\\s>])[^>]{0,200}>`, "gi");
+  const close = new RegExp(`</${name}\\s*>`, "gi");
   const locs = [];
-  for (const match of xml.matchAll(LOC)) {
-    locs.push({ url: decodeEntities(match[1].trim()), offset: match.index });
+  for (let match = open.exec(xml); match; match = open.exec(xml)) {
+    close.lastIndex = open.lastIndex;
+    const end = close.exec(xml);
+    if (!end) break;
+    const value = xml.slice(open.lastIndex, end.index).trim().replace(/^<!\[CDATA\[/, "").replace(/\]\]>$/, "");
+    locs.push({ url: decodeEntities(value.trim()), offset: match.index });
+    open.lastIndex = close.lastIndex;
   }
   return { kind, locs };
 }
@@ -90,6 +98,10 @@ export function loadSitemaps(site, candidates, robots) {
         entries.push({ url, file, offset });
       }
     }
+  }
+  // An index that only ever leads back to itself lists nothing, just as an empty <urlset> does.
+  if (files.length > 0 && entries.length === 0 && problems.length === 0) {
+    problems.push({ file: files[0], offset: null, message: `${files[0]} lists no URLs` });
   }
   return { files, entries, problems };
 }

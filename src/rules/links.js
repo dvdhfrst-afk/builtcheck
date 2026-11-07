@@ -34,6 +34,7 @@ function isAnchorElement(element) {
 function navigationReferences(page) {
   const references = [];
   for (const element of [...page.all("a"), ...page.all("area")]) {
+    if (page.isInTemplate(element)) continue;
     const href = getAttr(element, "href");
     if (href !== null && !isDeadHref(href)) references.push({ element, url: href });
   }
@@ -72,7 +73,9 @@ const missingAnchor = {
   page(page, { site, report }) {
     for (const { element, url } of navigationReferences(page)) {
       if (!isAnchorElement(element)) continue;
-      const resolved = resolveReference(url, page.baseUrl, site);
+      // With a <base> element, even "#part" points at the page the base names.
+      const absolute = url.trim().startsWith("#") && page.baseUrl !== page.ownUrl ? new URL(url.trim(), page.baseUrl).href : url;
+      const resolved = resolveReference(absolute, page.baseUrl, site);
       if (resolved.kind !== "fragment" && resolved.kind !== "internal") continue;
       const fragment = meaningfulFragment(resolved.fragment);
       if (fragment === null) continue;
@@ -86,6 +89,13 @@ const missingAnchor = {
       const targetPage = target?.file ? site.page(target.file) : null;
       if (targetPage && !targetPage.ids.has(fragment)) {
         report({ file: page.file, offset: element.start, message: `Link ${url} points at an id that is not on ${target.file}` });
+      }
+    }
+    for (const element of page.all("use")) {
+      const url = svgHref(element);
+      if (!url?.trim().startsWith("#") || page.isInTemplate(element)) continue;
+      if (!page.ids.has(url.trim().slice(1))) {
+        report({ file: page.file, offset: element.start, message: `SVG reference ${url} points at an id that is not on this page` });
       }
     }
   },
@@ -123,6 +133,10 @@ const ASSET_ATTRIBUTES = {
   track: ["src"], iframe: ["src"], embed: ["src"], object: ["data"],
 };
 
+function svgHref(element) {
+  return getAttr(element, "href") ?? getAttr(element, "xlink:href");
+}
+
 function assetReferences(page) {
   const references = [];
   for (const [name, attributes] of Object.entries(ASSET_ATTRIBUTES)) {
@@ -131,6 +145,12 @@ function assetReferences(page) {
         const url = getAttr(element, attribute);
         if (url) references.push({ element, url });
       }
+    }
+  }
+  for (const name of ["use", "image"]) {
+    for (const element of page.all(name)) {
+      const url = svgHref(element);
+      if (url) references.push({ element, url });
     }
   }
   for (const name of ["img", "source"]) {
@@ -147,8 +167,10 @@ function assetReferences(page) {
   for (const element of page.all("link")) {
     const href = getAttr(element, "href");
     if (href && linkRels(element).some((rel) => ASSET_RELS.has(rel))) references.push({ element, url: href });
+    const srcset = getAttr(element, "imagesrcset");
+    if (srcset) for (const url of parseSrcset(srcset)) references.push({ element, url });
   }
-  return references;
+  return references.filter(({ element }) => !page.isInTemplate(element));
 }
 
 const brokenAsset = {
@@ -156,6 +178,15 @@ const brokenAsset = {
   severity: "error",
   description: "An image, script, stylesheet, font or other referenced file is not in the build.",
   page(page, { site, report }) {
+    for (const name of ["img", "script"]) {
+      for (const element of page.all(name)) {
+        // A script fills in an empty src when the element names a lazy source to use.
+        const isLazy = [...element.attrs.keys()].some((attribute) => attribute === "srcset" || attribute.startsWith("data-"));
+        if (getAttr(element, "src")?.trim() === "" && !isLazy && !page.isInTemplate(element)) {
+          report({ file: page.file, offset: element.start, message: `<${name}> has an empty src` });
+        }
+      }
+    }
     for (const { element, url } of assetReferences(page)) {
       const resolved = resolveReference(url, page.baseUrl, site);
       if (resolved.kind === "internal" && site.lookup(resolved.path) === null) {
@@ -224,6 +255,7 @@ const genericNoDestination = {
   page(page, { site, options, report }) {
     const phrases = options.phrases.map((phrase) => phrase.toLowerCase());
     for (const element of page.all("a")) {
+      if (page.isInTemplate(element)) continue;
       if (isScriptedControl(element) || (element.attrs.has("name") && !element.attrs.has("href"))) continue;
       const text = anchorText(element);
       const lower = text.toLowerCase();
@@ -249,7 +281,7 @@ const placeholderHref = {
     const generic = phrasesReportedElsewhere(site);
     for (const element of page.all("a")) {
       const href = getAttr(element, "href");
-      if (href === null || !isDeadHref(href) || isScriptedControl(element)) continue;
+      if (href === null || !isDeadHref(href) || isScriptedControl(element) || page.isInTemplate(element)) continue;
       const lower = anchorText(element).toLowerCase();
       if (generic.some((phrase) => startsWithPhrase(lower, phrase))) continue;
       const shown = href.trim() === "" ? "an empty href" : `href="${href.trim()}"`;

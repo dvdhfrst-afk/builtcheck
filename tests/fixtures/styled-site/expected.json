@@ -1,0 +1,12 @@
+{
+  "suppressed": 0,
+  "findings": [
+    {"rule": "copy/placeholder-text", "file": "index.html", "line": 12},
+    {"rule": "copy/duplicate-heading", "file": "index.html", "line": 16},
+    {"rule": "copy/placeholder-text", "file": "index.html", "line": 18},
+    {"rule": "style/pure-color", "file": "css/main.css", "line": 9},
+    {"rule": "style/phone-overflow", "file": "css/main.css", "line": 10},
+    {"rule": "style/phone-overflow", "file": "css/main.css", "line": 13},
+    {"rule": "style/pure-color", "file": "css/main.css", "line": 17}
+  ]
+}

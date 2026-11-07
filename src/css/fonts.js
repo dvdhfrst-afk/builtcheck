@@ -34,7 +34,8 @@ export function normalizeFamily(family) {
     .trim()
     .replace(/^["']|["']$/g, "")
     .replace(/\s+/g, " ")
-    .replace(/\s+(variable|vf|var)$/i, "")
+    .replace(/\s+(?:vf|var)$/i, "")
+    .replace(/(.)\s*variable$/i, "$1")
     .toLowerCase();
 }
 

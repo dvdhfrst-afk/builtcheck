@@ -55,6 +55,7 @@ details { border-top: 1px solid var(--line); padding: 10px 0; }
 summary { cursor: pointer; font-weight: 600; overflow-wrap: anywhere; }
 summary small { font-weight: 400; color: var(--muted); margin-left: 6px; }
 ul { list-style: none; margin: 8px 0 0; padding: 0; }
+[hidden] { display: none !important; }
 li { display: grid; grid-template-columns: 4.5em 5em 1fr; gap: 4px 10px; padding: 6px 0; align-items: start; }
 li .at { color: var(--muted); font: 13px ui-monospace, Menlo, Consolas, monospace; }
 li .severity { font-size: 13px; font-weight: 600; }

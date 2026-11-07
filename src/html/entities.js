@@ -81,20 +81,39 @@ export function decodeEntities(raw, { attribute = false } = {}) {
 // Maps an index in the decoded text back to its index in the raw source, so a finding
 // can point at the exact "&mdash;" that produced a character.
 export function rawIndexForDecoded(raw, decodedIndex) {
+  return rawIndexMapper(raw)(decodedIndex);
+}
+
+// The same mapping, prepared once for many lookups in one piece of text.
+export function rawIndexMapper(raw) {
+  if (!raw.includes("&")) return (decodedIndex) => decodedIndex;
+  // Each stretch: [decoded start, raw start, is it a single reference].
+  const stretches = [];
   let rawPos = 0;
   let decodedPos = 0;
   for (const match of raw.matchAll(REFERENCE)) {
     const literalLength = match.index - rawPos;
-    if (decodedIndex < decodedPos + literalLength) {
-      return rawPos + (decodedIndex - decodedPos);
-    }
+    if (literalLength > 0) stretches.push([decodedPos, rawPos, false]);
     decodedPos += literalLength;
     const next = raw[match.index + match[0].length];
     const value = replacementFor(match[0], match[1], match[2], next, false);
     const decoded = value === null ? match[0] : value;
-    if (decodedIndex < decodedPos + decoded.length) return match.index;
+    stretches.push([decodedPos, match.index, true]);
     decodedPos += decoded.length;
     rawPos = match.index + match[0].length;
   }
-  return rawPos + (decodedIndex - decodedPos);
+  const tailDecoded = decodedPos;
+  const tailRaw = rawPos;
+  return (decodedIndex) => {
+    if (decodedIndex >= tailDecoded) return tailRaw + (decodedIndex - tailDecoded);
+    let low = 0;
+    let high = stretches.length - 1;
+    while (low < high) {
+      const middle = (low + high + 1) >> 1;
+      if (stretches[middle][0] <= decodedIndex) low = middle;
+      else high = middle - 1;
+    }
+    const [decodedStart, rawStart, isReference] = stretches[low];
+    return isReference ? rawStart : rawStart + (decodedIndex - decodedStart);
+  };
 }

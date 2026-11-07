@@ -1,0 +1,17 @@
+@import "extra.css";
+.tpl{display:none}
+.panel{display:none}
+.panel.open{display:block}
+.only-mobile{display:none}
+@media (max-width:600px){.only-mobile{display:block}}
+.unused-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:40px}
+.unused-white{color:#fff}
+.used-white{color:#fff}
+.used-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:40px}
+.collapsed-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:40px}
+@media (max-width:600px){.collapsed-grid{display:block}}
+.wide{width:1200px}
+.capped{width:1200px;max-width:100%}
+.scroller{overflow-x:auto}
+.wide-table{min-width:800px}
+nav a:hover{color:#000}

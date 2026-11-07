@@ -1,7 +1,7 @@
 // Rules about the words on the page: dashes, duplicated headings and leftover placeholders.
 
 import { hiddenByClass, isInsideHidden } from "../html/page.js";
-import { rawIndexForDecoded } from "../html/entities.js";
+import { rawIndexMapper } from "../html/entities.js";
 import { ancestors, normalizeSpace, textContent } from "../html/tree.js";
 
 function snippet(text, index, length) {
@@ -11,7 +11,8 @@ function snippet(text, index, length) {
 }
 
 function offsetInRun(run, decodedIndex) {
-  return run.start + rawIndexForDecoded(run.raw, decodedIndex);
+  run.toRaw ??= rawIndexMapper(run.raw);
+  return run.start + run.toRaw(decodedIndex);
 }
 
 const CHARACTER_NAMES = { "\u2014": "Em dash", "\u2013": "En dash", "\u2015": "Horizontal bar" };
@@ -42,6 +43,14 @@ const emDash = {
 // Exactly two hyphens. Longer runs are dividers and arrows are arrows.
 const DOUBLE_HYPHEN = /(?<![-<])--(?![->])/g;
 
+// Hyphens inside a URL, a domain or a file name are part of the name.
+function isInsideTechnicalName(text, index) {
+  const before = text.slice(0, index).split(/\s/).pop();
+  const after = text.slice(index).split(/\s/)[0];
+  const token = `${before}${after}`.replace(/[.,;:!?)\]]+$/, "");
+  return /:\/\/|^www\.|^xn--|\/|@|_/i.test(token) || /[\w-]\.[a-z][a-z0-9]{0,7}$/i.test(token);
+}
+
 const doubleHyphen = {
   id: "copy/double-hyphen",
   severity: "warning",
@@ -53,6 +62,7 @@ const doubleHyphen = {
         const next = run.value[match.index + 2];
         const startsWord = previous === undefined || /[\s("'[]/.test(previous);
         if (startsWord && next !== undefined && /[a-zA-Z0-9]/.test(next)) continue;
+        if (isInsideTechnicalName(run.value, match.index)) continue;
         report({
           file: page.file,
           offset: offsetInRun(run, match.index),
@@ -67,6 +77,7 @@ function checkedHeadings(page, levels) {
   return page.headings.filter(({ element, level, text }) => {
     if (!levels.includes(level) || text === "") return false;
     if (isInsideHidden(element) || hiddenByClass(element)) return false;
+    if (page.styles?.isSometimesHidden(element)) return false;
     return !ancestors(element).some((parent) => parent.name === "footer" || parent.name === "nav");
   });
 }
@@ -74,7 +85,7 @@ function checkedHeadings(page, levels) {
 const duplicateHeading = {
   id: "copy/duplicate-heading",
   severity: "warning",
-  description: "The same heading text appears twice on a page. Text hidden at some breakpoints, footers and navigation are not compared.",
+  description: "The same heading text appears twice on a page. Text hidden at some breakpoints, headings for screen readers, footers and navigation are not compared.",
   options: { levels: [1, 2, 3] },
   page(page, { options, report }) {
     const seen = new Map();
@@ -116,14 +127,14 @@ const duplicateSubhead = {
 
 const DEFAULT_PATTERNS = [
   { label: "lorem ipsum", pattern: "\\blorem ipsum\\b", flags: "i" },
-  { label: "unfinished marker", pattern: "\\b(?:TODO|FIXME|TBD|XXX+)\\b" },
+  { label: "unfinished marker", pattern: "\\b(?:TODO|FIXME|TBD|XXXX+)\\b|^\\s*XXX\\s*$" },
   { label: "bracketed fill-in", pattern: "\\[\\s*(?:fill|insert|placeholder|todo|tbd|your)\\b[^\\]]*\\]", flags: "i" },
-  { label: "template company name", pattern: "\\byour (?:company|business) name\\b", flags: "i" },
-  { label: "template text", pattern: "\\b(?:your text here|text goes here|content goes here|placeholder text|sample text|dummy text)\\b", flags: "i" },
-  { label: "fill-in instruction", pattern: "\\b(?:insert|replace)\\b[^.\\n]{1,40}\\bhere\\b", flags: "i" },
+  { label: "template company name", pattern: "\\bYour (?:Company|Business) Name\\b|^\\s*your (?:company|business) name\\s*$" },
+  { label: "template text", pattern: "\\b(?:your text here|text goes here|content goes here)\\b|^\\s*(?:placeholder|sample|dummy) text\\s*\\.?\\s*$", flags: "i" },
+  { label: "fill-in instruction", pattern: "^\\s*\\[?(?:insert|replace)\\b[^.,\\n]{1,40}\\bhere\\s*[.!\\]]?\\s*$", flags: "i" },
   { label: "placeholder phone number", pattern: "\\(?\\b(?:555\\)?[-. ]555|000\\)?[-. ]000|123\\)?[-. ]456)[-. ]\\d{4}\\b|\\bxxx[-. ]xxx[-. ]xxxx\\b", flags: "i" },
   { label: "placeholder email address", pattern: "\\b(?:you|your|name|user|email|someone)(?:email|name)?@(?:example|domain|yourdomain|email)\\.(?:com|org|net)\\b", flags: "i" },
-  { label: "unrendered template", pattern: "\\{\\{[^{}]*\\}\\}|\\$\\{[^{}]*\\}|<%[^%]*%>" },
+  { label: "unrendered template", pattern: "\\{\\{[^{}]*\\}\\}|\\{%[^{}]*%\\}|\\$\\{[^{}]*\\}|<%[^%]*%>" },
   { label: "stringified object", pattern: "\\[object Object\\]" },
   { label: "unrendered value", pattern: "^\\s*(?:undefined|null|NaN)\\s*$" },
 ];

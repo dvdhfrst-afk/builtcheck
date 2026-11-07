@@ -3,7 +3,7 @@
 
 import { Suppressions, parseDirective, parseRuleList } from "../engine/suppressions.js";
 import { LineIndex } from "../site/lines.js";
-import { scanCss } from "../css/scanner.js";
+import { nextRuleEnd, scanCss } from "../css/scanner.js";
 import { isJsonLdScript, parseJsonLdText } from "../schema/jsonld.js";
 import { buildTree, classList, getAttr, hasAttr, isHeadingName, textContent, walk } from "./tree.js";
 
@@ -25,6 +25,7 @@ export class Page {
   constructor(file, source) {
     this.file = file;
     this.source = source;
+    this.styles = null;
     this.lines = new LineIndex(source);
     const { root, elements, comments } = buildTree(source);
     this.root = root;
@@ -45,6 +46,11 @@ export class Page {
 
   all(name) {
     return this.byName.get(name) ?? [];
+  }
+
+  // Whether an element sits inside a <template>, which the browser does not render or load.
+  isInTemplate(element) {
+    return this.all("template").some((template) => element.start > template.start && element.start < template.end);
   }
 
   first(name) {
@@ -121,6 +127,13 @@ export class Page {
     return blocks;
   }
 
+  // Connects the page to its stylesheets, once the whole site is loaded, and drops text that a
+  // stylesheet always hides from the visible text.
+  applyStyles(styles) {
+    this.styles = styles;
+    this.textRuns = this.textRuns.filter((run) => run.parent.name === "title" || !styles.isAlwaysHidden(run.parent));
+  }
+
   // All parsed nodes across every block on the page.
   get jsonLdNodes() {
     return this.jsonLd.flatMap((block) => (block.ok ? block.nodes : []));
@@ -133,7 +146,7 @@ export class Page {
       if (type !== null && type.trim() !== "" && type.trim().toLowerCase() !== "text/css") continue;
       const textNode = style.children.find((child) => child.type === "text");
       if (!textNode) continue;
-      sources.push({ file: this.file, kind: "block", baseOffset: textNode.start, ...scanCss(textNode.value) });
+      sources.push({ file: this.file, kind: "block", baseOffset: textNode.start, ...scanCss(textNode.value), element: style });
     }
     for (const element of this.elements) {
       const attr = element.attrs.get("style");
@@ -161,7 +174,7 @@ export class Page {
       if (directive.kind === "file") {
         suppressions.addFile(directive.rules);
       } else if (directive.kind === "next-line") {
-        suppressions.addLine(this.lines.locate(comment.end).line + 1, directive.rules);
+        suppressions.addNextLine(this.source, comment.end, this.lines, directive.rules);
       } else {
         const next = elementAfter(comment.end);
         if (next) suppressions.addRange(next.start, next.end, directive.rules);
@@ -174,7 +187,10 @@ export class Page {
         if (!directive) continue;
         if (directive.kind === "file") suppressions.addFile(directive.rules);
         else if (directive.kind === "next-line") {
-          suppressions.addLine(this.lines.locate(source.baseOffset + comment.end).line + 1, directive.rules);
+          suppressions.addNextLine(this.source, source.baseOffset + comment.end, this.lines, directive.rules);
+        } else {
+          const from = source.baseOffset + comment.end;
+          suppressions.addRange(from, nextRuleEnd(this.source, from), directive.rules);
         }
       }
     }
@@ -200,7 +216,7 @@ export function isInsideHidden(element) {
 export function hiddenByClass(element) {
   for (let node = element; node && node.type === "element"; node = node.parent) {
     for (const token of classList(node)) {
-      if (token === "d-none" || /(^|:)hidden$/.test(token)) return true;
+      if (token === "d-none" || /(^|:)(?:hidden|sr-only|visually-hidden|visuallyhidden|screen-reader-text)$/.test(token)) return true;
     }
   }
   return false;

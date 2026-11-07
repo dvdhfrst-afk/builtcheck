@@ -1,8 +1,9 @@
 // Inline ignore comments.
 //
 //   builtcheck-ignore-file [rules]          the whole file
-//   builtcheck-ignore-next-line [rules]     the line after the comment
-//   builtcheck-ignore-next-element [rules]  the next HTML element and everything inside it
+//   builtcheck-ignore-next-line [rules]     the line after the comment, or the rest of the
+//                                           comment's own line if code follows it, as in minified files
+//   builtcheck-ignore-next-element [rules]  the next HTML element, CSS rule or group of lines
 //
 // With no rules named, a directive covers every rule. A rule can be an exact id or a group
 // such as "copy/*". Text after " -- " is a free-form reason. An HTML element can also carry
@@ -50,6 +51,14 @@ export class Suppressions {
     this.rangeRules.push({ start, end, rules });
   }
 
+  // `end` is the offset just after the comment in `text`.
+  addNextLine(text, end, lines, rules) {
+    const lineBreak = text.indexOf("\n", end);
+    const lineEnd = lineBreak === -1 ? text.length : lineBreak;
+    if (text.slice(end, lineEnd).trim() !== "") this.addRange(end, lineEnd, rules);
+    else this.addLine(lines.locate(end).line + 1, rules);
+  }
+
   matches(ruleId, line, offset) {
     if (this.fileRules.some((rules) => ruleMatches(rules, ruleId))) return true;
     if (line !== null && line !== undefined) {
@@ -66,17 +75,32 @@ export class Suppressions {
 }
 
 // For plain text formats: robots.txt, llms.txt, sitemap XML, _redirects.
-const TEXT_COMMENT = /^\s*(?:#|<!--)\s*(builtcheck-ignore-(?:file|next-line)[^\n]*?)\s*(?:-->)?\s*$/;
+const TEXT_COMMENT = /^\s*(?:#|<!--)\s*(builtcheck-ignore-(?:file|next-line|next-element)[^\n]*?)\s*(?:-->)?\s*$/;
+
+// The lines (0-based) that make up the "element" after a comment: an XML element through its
+// closing tag, otherwise everything up to the next blank line.
+function nextElementLines(lines, from) {
+  const covered = [];
+  const first = /^\s*<([\w:.-]+)/.exec(lines[from] ?? "");
+  for (let i = from; i < lines.length; i += 1) {
+    if (lines[i].trim() === "") break;
+    covered.push(i);
+    if (first && (lines[i].includes(`</${first[1]}`) || /\/>\s*$/.test(lines[i]))) break;
+  }
+  return covered;
+}
 
 export function suppressionsFromText(text) {
   const suppressions = new Suppressions();
-  text.split("\n").forEach((line, index) => {
+  const lines = text.split("\n");
+  lines.forEach((line, index) => {
     const match = TEXT_COMMENT.exec(line);
     if (!match) return;
     const directive = parseDirective(match[1]);
     if (!directive) return;
     if (directive.kind === "file") suppressions.addFile(directive.rules);
-    else suppressions.addLine(index + 2, directive.rules);
+    else if (directive.kind === "next-line") suppressions.addLine(index + 2, directive.rules);
+    else for (const covered of nextElementLines(lines, index + 1)) suppressions.addLine(covered + 1, directive.rules);
   });
   return suppressions;
 }

@@ -33,7 +33,7 @@ const robotsBlocksCrawler = {
   site({ site, options, report }) {
     if (!site.robots) return;
     for (const crawler of options.crawlers) {
-      const { allowed, rule } = checkAccess(site.robots, crawler, "/");
+      const { allowed, rule } = checkAccess(site.robots, crawler, `${site.basePath}/`);
       if (!allowed) {
         report({
           file: ROBOTS,
@@ -280,6 +280,8 @@ const socialImageSize = {
     if (!image?.file) return;
     const size = site.imageSize(image.file);
     if (!size) {
+      // Only PNG and JPEG sizes can be read; another format simply goes unmeasured.
+      if (!/\.(?:png|jpe?g)$/i.test(image.file)) return;
       report({ file: image.file, message: "Cannot read the size of the default social image: it is not a valid PNG or JPEG" });
     } else if (size.width !== options.width || size.height !== options.height) {
       report({

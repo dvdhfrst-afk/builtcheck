@@ -18,11 +18,15 @@ export function isNoindex(page) {
 }
 
 export function isRedirectPage(page) {
-  return page.all("meta").some((meta) => (getAttr(meta, "http-equiv") ?? "").trim().toLowerCase() === "refresh");
+  // A refresh with no URL reloads the same page, which is not a redirect.
+  return page.all("meta").some(
+    (meta) => (getAttr(meta, "http-equiv") ?? "").trim().toLowerCase() === "refresh" && /url\s*=/i.test(getAttr(meta, "content") ?? ""),
+  );
 }
 
 export function isIndexable(page) {
-  return !(isErrorPage(page) || isNoindex(page) || isRedirectPage(page) || VERIFICATION_PAGE.test(page.file));
+  if (isErrorPage(page) || isNoindex(page) || isRedirectPage(page) || VERIFICATION_PAGE.test(page.file)) return false;
+  return !(page.site && hasCanonicalElsewhere(page, page.site));
 }
 
 // True when the canonical link of a page names a different page.

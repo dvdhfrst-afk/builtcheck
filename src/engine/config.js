@@ -158,7 +158,10 @@ export function resolveConfig(user, rules) {
 
   // Groups first, so an exact rule entry wins no matter the order in the file.
   const entries = Object.entries(userRules);
-  const groups = entries.filter(([key]) => key.endsWith("/*") || key === "*");
+  // Likewise "*" before named groups, wherever each appears.
+  const groups = entries
+    .filter(([key]) => key.endsWith("/*") || key === "*")
+    .sort(([a], [b]) => a.length - b.length);
   const exact = entries.filter(([key]) => !(key.endsWith("/*") || key === "*"));
   for (const [key, value] of groups) {
     const prefix = key === "*" ? "" : key.slice(0, -1);
@@ -195,7 +198,9 @@ export function resolveConfig(user, rules) {
 export function readConfigFile(path) {
   let text;
   try {
-    text = readFileSync(path, "utf8");
+    const buffer = readFileSync(path);
+    // Some shells write redirected output as UTF-16 with a byte order mark.
+    text = buffer[0] === 0xff && buffer[1] === 0xfe ? buffer.toString("utf16le") : buffer.toString("utf8");
   } catch (error) {
     throw new ConfigError(`Cannot read config file ${path}: ${error.message}`);
   }

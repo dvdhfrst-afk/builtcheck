@@ -64,18 +64,26 @@ export function buildTree(source) {
   const elements = [];
   const comments = [];
   let foreignDepth = 0;
+  const openCounts = new Map();
 
   const top = () => stack[stack.length - 1];
+  const countOpen = (name, change) => openCounts.set(name, (openCounts.get(name) ?? 0) + change);
 
   const popThrough = (index, endOffset) => {
     while (stack.length > index) {
       const element = stack.pop();
+      countOpen(element.name, -1);
       element.end = endOffset;
       if (element.name === "svg" || element.name === "math") foreignDepth -= 1;
     }
   };
 
   const closeImplied = (targets, boundaries, offset) => {
+    let anyOpen = false;
+    for (const name of targets) {
+      if ((openCounts.get(name) ?? 0) > 0) anyOpen = true;
+    }
+    if (!anyOpen) return;
     for (let i = stack.length - 1; i > 0; i -= 1) {
       const { name } = stack[i];
       if (targets.has(name)) {
@@ -116,9 +124,11 @@ export function buildTree(source) {
       const closesItself = VOID.has(token.name) || (token.selfClosing && (foreignDepth > 0 || isForeignRoot));
       if (!closesItself) {
         stack.push(element);
+        countOpen(element.name, 1);
         if (isForeignRoot) foreignDepth += 1;
       }
     } else if (token.type === "endTag") {
+      if ((openCounts.get(token.name) ?? 0) === 0) continue;
       for (let i = stack.length - 1; i > 0; i -= 1) {
         if (stack[i].name === token.name) {
           const closing = stack[i];

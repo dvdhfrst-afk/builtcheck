@@ -54,7 +54,7 @@ node bin/builtcheck.js --list-rules
 - **Structured data:** every JSON-LD (JavaScript Object Notation for Linked Data) block parses, each page has one, each node has the fields its type requires, question and answer pages carry `FAQPage`, and blog posts carry `Article`. Types and their field lists are defaults you can replace.
 - **Links:** internal links, in-page anchors and referenced files resolve to files and ids that exist in the build. "Read more" style links with no real destination are reported.
 - **Copy:** em dashes and `--` in visible text (never in code, attributes or scripts), duplicate headings and subheads, and placeholder text.
-- **Style:** pure black and white in any notation, configured fonts, and layouts that overflow at phone width, in CSS (Cascading Style Sheets), `<style>` blocks, inline styles and utility classes.
+- **Style:** pure black and white in any notation and configured fonts, in CSS (Cascading Style Sheets), `<style>` blocks and inline styles; layouts that overflow at phone width in those and in utility classes. CSS that matches nothing on any page is skipped, so an unused part of a framework is not reported.
 
 Severities follow one idea: an **error** means something is definitely broken or missing, and a **warning** means a recommendation or a style preference. Warnings do not fail a run unless you ask:
 
@@ -115,15 +115,19 @@ node bin/builtcheck.js --print-config
 |---|---|
 | `url` | The deployed URL (Uniform Resource Locator). Absolute links to this host count as internal, and sitemap URLs on other hosts are reported. Also `--site-url`. |
 | `basePath` | The path the site deploys under, such as `/docs`. Also `--base-path`. |
-| `externalPaths` | Glob patterns of URL paths that exist but are not in the build, such as an application served from the same host. |
+| `externalPaths` | Glob patterns of URL paths that exist but are not in the build, such as an application served from the same host. Under a base path, write them with or without it. |
 | `sitemapPaths` | Where to look for a sitemap when `robots.txt` names none. |
 | `socialImagePaths` | Where to look for the default social image, in order. |
 
-When `url` is not set, the host is taken from the sitemap, `robots.txt` and canonical links. When `basePath` is not set, it is inferred from the sitemap if every URL shares a leading folder that is not in the build and removing it finds the pages. A `_redirects` file in the build counts: a path it redirects is a valid link.
+When `url` is not set, the host is taken from the sitemap, `robots.txt` and canonical links. When `basePath` is not set, it is inferred from the sitemap if every URL shares a leading folder that is not in the build and removing it finds the pages. A `_redirects` file in the build counts: a path it redirects is a valid link, with or without the base path in its source.
 
 ## Ignoring a finding
 
-Put a comment in the file. The same forms work in HTML comments, in CSS comments and in `#` comment lines in text files such as `robots.txt`. Name one or more rules, or a group, or nothing to mean every rule. Text after ` -- ` is a reason and is not read.
+Put a comment in the file. The same forms work in HTML comments, in CSS comments and in `#` or `<!-- -->` comment lines in text files such as `robots.txt`. Name one or more rules, or a group, or nothing to mean every rule. Text after ` -- ` is a reason and is not read.
+
+- `builtcheck-ignore-file` covers the whole file.
+- `builtcheck-ignore-next-line` covers the next line. If code follows the comment on its own line, as in a minified file, it covers the rest of that line instead.
+- `builtcheck-ignore-next-element` covers the next HTML element with everything in it, the next CSS rule, or in a text file the next lines up to a blank line or a closing XML tag.
 
 ```html
 <!-- builtcheck-ignore-next-line copy/em-dash -- quoted from a book -->
@@ -144,7 +148,7 @@ Each report gives a count of the findings ignored this way.
 
 ## How it works
 
-`src/html/` is a tolerant hand-written tokenizer and tree builder, and `src/css/` is a simple scanner. Neither ever throws on broken input. They record source offsets, which is how findings get a line and column, even inside minified files and `style` attributes.
+`src/html/` is a tolerant hand-written tokenizer and tree builder, and `src/css/` is a simple scanner with a selector matcher and a cascade. None of them throws on broken input. They record source offsets, which is how findings get a line and column, even inside minified files and `style` attributes. The cascade works out what reaches an element on a page: the stylesheets it loads in order, `@import`, media queries, layers, specificity and `!important`. What depends on a width or a state, such as `:hover`, is kept apart from what always applies.
 
 `src/site/` loads a build: pages, stylesheets, sitemaps, `robots.txt`, redirects, image sizes, and how a URL maps to a file. `src/rules/` holds the rules, and `src/engine/` runs them, applies config and ignore comments, then sorts and removes duplicates. `src/report/` writes the three formats.
 
@@ -155,10 +159,12 @@ A rule is a plain object with an `id`, a `severity`, a `description`, default `o
 These come with reading static files instead of running a browser:
 
 - Pages and links that JavaScript creates at run time are not seen. Audit the output of a server-side or static render.
-- Layout checks are arithmetic on class names and CSS values. They catch a grid whose gaps alone cannot fit, not every overflow a browser would show.
+- Classes a script adds cannot be seen. CSS aimed only at such a class looks unused and is skipped; set `ignoreUnused` to `false` to check it. Text a stylesheet hides until a script changes an inline style looks hidden.
+- Layout checks are arithmetic on class names and CSS values. They catch a grid whose gaps alone cannot fit and fixed widths, not every overflow a browser would show.
+- Links to a path outside the base path are treated as another application on the same host, so they are not checked.
 - Links to other hosts are not fetched.
 - Social image sizes are read for PNG and JPEG only. Other formats get no size check.
-- `style/phone-overflow` knows Tailwind-style utility classes and plain CSS grids. Other class naming needs `classPatterns`.
+- `style/phone-overflow` knows Tailwind-style utility classes and plain CSS. Other class naming that carries a size in its name needs `classPatterns`.
 
 ## Running the tests
 
