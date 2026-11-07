@@ -1,0 +1,25 @@
+{
+  "site": {
+    "url": "https://www.example.com",
+    "externalPaths": ["/app/**", "/api/**"]
+  },
+  "ignore": ["drafts/**", "vendor/**"],
+  "rules": {
+    "foundation/robots-blocks-crawler": {
+      "crawlers": ["GPTBot", "ClaudeBot", "PerplexityBot", "ExampleBot"]
+    },
+    "foundation/sitemap-missing-page": { "exclude": ["thanks/**"] },
+    "schema/required-field": {
+      "required": {
+        "LocalBusiness": ["name", "geo", "telephone"]
+      }
+    },
+    "schema/required-type": { "severity": "warning", "types": ["BreadcrumbList"] },
+    "schema/blog-post-article": { "paths": ["journal/**"] },
+    "copy/em-dash": "error",
+    "copy/placeholder-text": { "extraPatterns": ["Example Widgets"] },
+    "style/pure-color": "off",
+    "style/banned-font": { "fonts": ["Comic Sans MS"], "ignoreFiles": ["vendor/**"] },
+    "style/phone-overflow": { "phoneWidth": 360 }
+  }
+}

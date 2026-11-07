@@ -1,0 +1,18 @@
+{
+  "name": "builtcheck",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Audit a built static site folder, offline, for the problems Lighthouse and link checkers do not report.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "builtcheck": "bin/builtcheck.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test",
+    "check": "sh check.sh"
+  }
+}
