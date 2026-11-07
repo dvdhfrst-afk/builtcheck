@@ -195,8 +195,7 @@ const brokenAsset = {
     }
   },
   stylesheet(source, { site, report }) {
-    const page = site.page(source.file);
-    const baseUrl = page ? page.baseUrl : baseUrlForFile(source.file, site);
+    const baseUrl = source.page ? source.page.baseUrl : baseUrlForFile(source.file, site);
     const check = (url, offset) => {
       const resolved = resolveReference(url, baseUrl, site);
       if (resolved.kind === "internal" && site.lookup(resolved.path) === null) {

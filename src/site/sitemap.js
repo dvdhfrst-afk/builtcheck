@@ -4,7 +4,15 @@ import { gunzipSync } from "node:zlib";
 import { decodeEntities } from "../html/entities.js";
 
 function blankXmlComments(text) {
-  return text.replace(/<!--[^]*?-->/g, (match) => match.replace(/[^\n]/g, " "));
+  let result = "";
+  let position = 0;
+  for (;;) {
+    const start = text.indexOf("<!--", position);
+    const end = start === -1 ? -1 : text.indexOf("-->", start + 4);
+    if (end === -1) return result + text.slice(position);
+    result += text.slice(position, start) + text.slice(start, end + 3).replace(/[^\n]/g, " ");
+    position = end + 3;
+  }
 }
 
 // Returns { kind: "urlset" | "index", locs: [{ url, offset }] }, or null if neither root exists.
@@ -29,11 +37,15 @@ export function parseSitemapXml(text) {
   return { kind, locs };
 }
 
+// The sitemap format allows 50 MB per file. Anything past this is not a sitemap.
+const MAX_SITEMAP_BYTES = 64 * 1024 * 1024;
+
 function readSitemapText(site, file) {
-  const buffer = site.readBuffer(file);
+  const buffer = site.readBuffer(file, MAX_SITEMAP_BYTES);
+  if (buffer === null) return undefined;
   if (!file.endsWith(".gz")) return buffer.toString("utf8");
   try {
-    return gunzipSync(buffer).toString("utf8");
+    return gunzipSync(buffer, { maxOutputLength: MAX_SITEMAP_BYTES }).toString("utf8");
   } catch {
     return null;
   }
@@ -74,6 +86,7 @@ export function loadSitemaps(site, candidates, robots) {
     seen.add(file);
     files.push(file);
     const text = readSitemapText(site, file);
+    if (text === undefined) continue;
     if (text === null) {
       problems.push({ file, offset: null, message: `${file} could not be decompressed` });
       continue;

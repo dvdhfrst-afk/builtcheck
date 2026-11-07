@@ -1,10 +1,13 @@
 // Runs rules over a site and collects findings.
 //
 // A rule is a plain object: { id, severity, description, options, page, stylesheet, site }.
-// `page(page, context)` runs once per HTML page, `stylesheet(source, context)` once per CSS
-// source (file, <style> block or style attribute) and `site(context)` once per run. Any of
-// the three may be left out. Rules report through context.report() and hold no other state,
-// which keeps them independent of each other and of how they are scheduled.
+// `site(context)` runs once per run, first. `page(page, context)` runs once per HTML page, and
+// `stylesheet(source, context)` once per CSS source (file, <style> block or style attribute).
+// A page's blocks and style attributes are visited along with the page and stylesheet files
+// after all the pages. Any of the three may be left out. A rule that fails on odd input does
+// not lose the rest of the audit: the failure is recorded and makes the run incomplete.
+
+import { detached } from "../html/page.js";
 
 const NO_POSITION = Number.MAX_SAFE_INTEGER;
 
@@ -22,6 +25,7 @@ export function runRules(site, config, rules) {
   const findings = [];
   const seen = new Set();
   let suppressed = 0;
+  const active = [];
 
   for (const rule of rules) {
     const settings = config.rules[rule.id];
@@ -41,30 +45,48 @@ export function runRules(site, config, rules) {
         suppressed += 1;
         return;
       }
-      const key = [rule.id, file, resolvedLine ?? NO_POSITION, resolvedColumn ?? NO_POSITION, message].join("\0");
+      const key = detached([rule.id, file, resolvedLine ?? NO_POSITION, resolvedColumn ?? NO_POSITION, message].join("\0"));
       if (seen.has(key)) return;
       seen.add(key);
       findings.push({
         rule: rule.id,
         severity: settings.severity,
-        message,
+        message: detached(message),
         file,
         line: resolvedLine,
         column: resolvedColumn,
       });
     };
 
-    const context = { site, options: settings.options, report };
+    active.push({ rule, context: { site, options: settings.options, report } });
+  }
+
+  const guarded = (rule, file, run) => {
     try {
-      if (rule.site) rule.site(context);
-      if (rule.page) {
-        for (const page of site.pages) rule.page(page, context);
-      }
-      if (rule.stylesheet) {
-        for (const source of site.styleSources) rule.stylesheet(source, context);
-      }
+      run();
     } catch (error) {
-      throw new Error(`Rule ${rule.id} failed: ${error.stack ?? error.message}`);
+      if (process.env.BUILTCHECK_DEBUG) process.stderr.write(`${error.stack ?? error.message}\n`);
+      site.skip(file, `rule ${rule.id} failed here: ${error.message}`, true);
+    }
+  };
+
+  for (const { rule, context } of active) {
+    if (rule.site) guarded(rule, "(site)", () => rule.site(context));
+  }
+  const needsPages = active.some(({ rule }) => rule.page || rule.stylesheet);
+  if (needsPages) {
+    for (const page of site.eachPage()) {
+      for (const { rule, context } of active) {
+        if (rule.page) guarded(rule, page.file, () => rule.page(page, context));
+        if (rule.stylesheet) {
+          for (const source of page.styleSources) guarded(rule, page.file, () => rule.stylesheet(source, context));
+        }
+      }
+    }
+  }
+  for (const source of site.stylesheets) {
+    for (const { rule, context } of active) {
+      if (rule.stylesheet) guarded(rule, source.file, () => rule.stylesheet(source, context));
     }
   }
 

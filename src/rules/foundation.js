@@ -89,7 +89,9 @@ const llmsInvalid = {
   description: "llms.txt is empty or does not begin with a Markdown title line.",
   site({ site, report }) {
     if (!site.hasFile(LLMS)) return;
-    const lines = site.readText(LLMS).split("\n");
+    const text = site.readText(LLMS);
+    if (text === null) return;
+    const lines = text.split("\n");
     const index = lines.findIndex((line) => line.trim() !== "");
     if (index === -1) report({ file: LLMS, message: "llms.txt is empty" });
     else if (!/^#\s+\S/.test(lines[index])) {
@@ -244,7 +246,8 @@ function findDefaultImage(site) {
     const counts = new Map();
     let external = false;
     for (const page of site.pages) {
-      for (const { resolved } of imageReferences(page, IMAGE_KEYS, site)) {
+      for (const content of page.socialImages) {
+        const resolved = resolveReference(content, page.baseUrl, site);
         if (resolved.kind === "external") external = true;
         if (resolved.kind !== "internal") continue;
         const file = site.lookup(resolved.path)?.file;
@@ -279,6 +282,7 @@ const socialImageSize = {
     const image = findDefaultImage(site);
     if (!image?.file) return;
     const size = site.imageSize(image.file);
+    if (size === undefined) return;
     if (!size) {
       // Only PNG and JPEG sizes can be read; another format simply goes unmeasured.
       if (!/\.(?:png|jpe?g)$/i.test(image.file)) return;

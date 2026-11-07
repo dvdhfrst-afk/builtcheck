@@ -1,6 +1,8 @@
 // The readable terminal report. Findings group by file. A finding repeated across many files,
 // which usually means one layout or stylesheet problem, prints once with a count.
 
+import { printable } from "./printable.js";
+
 const COLLAPSE_AT = 4;
 const LIST_PER_RULE_IN_FILE = 20;
 const SUMMARIZE_ABOVE = 20;
@@ -18,7 +20,7 @@ function location(finding) {
 
 function fileLocation(finding) {
   const at = location(finding);
-  return at ? `${finding.file}:${at}` : finding.file;
+  return printable(at ? `${finding.file}:${at}` : finding.file);
 }
 
 function plural(count, word) {
@@ -56,7 +58,7 @@ export function formatText(result, { color = false, showAll = false, quiet = fal
   }
   const files = [...byFile.keys()].sort();
   for (const file of files) {
-    lines.push(paint("bold", file));
+    lines.push(paint("bold", printable(file)));
     const countInFile = new Map();
     const hiddenInFile = new Map();
     for (const finding of byFile.get(file)) {
@@ -67,7 +69,7 @@ export function formatText(result, { color = false, showAll = false, quiet = fal
         continue;
       }
       const at = location(finding).padEnd(8);
-      lines.push(`  ${paint("dim", at)} ${severityLabel(finding.severity)}  ${finding.message}  ${paint("cyan", finding.rule)}`);
+      lines.push(`  ${paint("dim", at)} ${severityLabel(finding.severity)}  ${printable(finding.message)}  ${paint("cyan", finding.rule)}`);
     }
     for (const [rule, hidden] of hiddenInFile) {
       lines.push(paint("dim", `  ... and ${hidden} more from ${rule} in this file (use --all to list them)`));
@@ -80,7 +82,7 @@ export function formatText(result, { color = false, showAll = false, quiet = fal
     for (const group of repeated) {
       const files = new Set(group.map((finding) => finding.file));
       const [first] = group;
-      lines.push(`  ${severityLabel(first.severity)}  ${first.message}  ${paint("cyan", first.rule)}`);
+      lines.push(`  ${severityLabel(first.severity)}  ${printable(first.message)}  ${paint("cyan", first.rule)}`);
       const examples = [...group.slice(0, 3)].map(fileLocation).join(", ");
       const more = files.size > 3 ? `, and ${files.size - 3} more` : "";
       lines.push(paint("dim", `           ${plural(files.size, "file")}: ${examples}${more}`));
@@ -94,6 +96,12 @@ export function formatText(result, { color = false, showAll = false, quiet = fal
     for (const finding of shown) perRule.set(finding.rule, (perRule.get(finding.rule) ?? 0) + 1);
     const ranked = [...perRule].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
     for (const [rule, count] of ranked) lines.push(`  ${String(count).padStart(5)}  ${rule}`);
+    lines.push("");
+  }
+
+  if ((result.skipped ?? []).length > 0) {
+    lines.push(paint("bold", "Not covered by this audit"));
+    for (const { file, reason } of (result.skipped ?? [])) lines.push(`  ${printable(file)}: ${printable(reason)}`);
     lines.push("");
   }
 

@@ -167,13 +167,16 @@ test("every spelling of the schema.org context is accepted", () => {
 test("the type of a node may be an array, a full URL or a prefixed name", () => {
   for (const type of [["Thing", "Plumber"], "https://schema.org/Plumber", "http://schema.org/Plumber", "schema:Plumber"]) {
     const found = findingsFor({ "index.html": page("x", ld({ ...context, "@type": type, name: "N" })) }, "schema/required-field");
-    assert.equal(found.length, 7, JSON.stringify(type));
+    assert.deepEqual(messages(found), ['Plumber "N" is missing "address"'], JSON.stringify(type));
+    const wanted = findingsFor({ "index.html": page("x", ld({ ...context, "@type": type, name: "N" })) }, "schema/recommended-field");
+    assert.equal(wanted.length, 7, JSON.stringify(type));
   }
 });
 
 test("empty values count as missing", () => {
   const object = { ...context, "@type": "Service", name: "   ", provider: {} };
-  assert.equal(findingsFor({ "index.html": page("x", ld(object)) }, "schema/required-field").length, 2);
+  assert.equal(findingsFor({ "index.html": page("x", ld(object)) }, "schema/required-field").length, 1);
+  assert.equal(findingsFor({ "index.html": page("x", ld(object)) }, "schema/recommended-field").length, 1);
   const list = { ...context, "@type": "FAQPage", mainEntity: [] };
   assert.equal(findingsFor({ "index.html": page("x", ld(list)) }, "schema/required-field").length, 1);
 });
@@ -184,8 +187,8 @@ test("alternatives in a field list satisfy the requirement", () => {
 });
 
 test("a typed main entity is held to its requirements, other nested nodes are not", () => {
-  const main = { ...context, "@type": "WebPage", mainEntity: { "@type": "Article", headline: "H" } };
-  assert.equal(findingsFor({ "index.html": page("x", ld(main)) }, "schema/required-field").length, 2);
+  const main = { ...context, "@type": "WebPage", mainEntity: { "@type": "Article", author: "A" } };
+  assert.equal(findingsFor({ "index.html": page("x", ld(main)) }, "schema/required-field").length, 1);
   const nested = { ...context, "@type": "Service", name: "S", provider: { "@type": "LocalBusiness", name: "Short reference" } };
   assert.deepEqual(findingsFor({ "index.html": page("x", ld(nested)) }, "schema/required-field"), []);
 });
@@ -219,7 +222,10 @@ test("required fields and subtypes are configurable, and one type can change alo
     },
   };
   const found = findingsFor(files, "schema/required-field", config);
-  assert.deepEqual(messages(found).sort(), ['Service "S" is missing "provider"', 'Vet "N" is missing "telephone"']);
+  assert.deepEqual(messages(found).sort(), ['Vet "N" is missing "telephone"']);
+  const elsewhere = { rules: { "schema/required-field": { required: { Service: ["serviceOutput"] } } } };
+  const both = messages(findingsFor(files, "schema/required-field", elsewhere)).sort();
+  assert.deepEqual(both, ['Service "S" is missing "serviceOutput"']);
 });
 
 test("schema/required-type does nothing until configured, then checks indexable pages", () => {

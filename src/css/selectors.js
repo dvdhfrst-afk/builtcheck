@@ -321,18 +321,24 @@ function parseComplex(text) {
 }
 
 const parsedLists = new Map();
+// Past this many remembered lists the memory is worth more: each page can bring its own <style>.
+const MAX_REMEMBERED_LISTS = 50_000;
+// No real selector is this long, and nesting in a longer one could exhaust the call stack.
+const MAX_SELECTOR_LENGTH = 16 * 1024;
 
 export function parseSelectorList(text) {
   const known = parsedLists.get(text);
   if (known) return known;
   const list = splitTopLevel(text).map((piece) => {
     try {
+      if (piece.length > MAX_SELECTOR_LENGTH) throw new Unreadable();
       return parseComplex(piece);
     } catch (error) {
-      if (!(error instanceof Unreadable)) throw error;
+      if (!(error instanceof Unreadable) && !(error instanceof RangeError)) throw error;
       return { text: piece, parts: [], specificity: [0, 0, 0], conditional: true, pseudoElement: null, unparsed: true, unknownPseudo: false };
     }
   });
+  if (parsedLists.size >= MAX_REMEMBERED_LISTS) parsedLists.clear();
   parsedLists.set(text, list);
   return list;
 }
@@ -341,18 +347,28 @@ export function compareSpecificity(a, b) {
   return a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
 }
 
+// Selector text that parses as unreadable, for nesting too deep or too wide to spell out. Each
+// level can multiply the length of the selector, so hostile CSS could otherwise fill the memory.
+const UNREADABLE_NESTING = "(nesting too deep)";
+const MAX_NESTING_LEVELS = 32;
+const MAX_NESTED_LENGTH = 64 * 1024;
+
 // Combines a nested rule with the selector it sits in, as CSS nesting does. Each level is a
 // selector list as written in the source.
 export function resolveNesting(path) {
+  if (path.length > MAX_NESTING_LEVELS) return UNREADABLE_NESTING;
   let resolved = "";
   for (const level of path) {
     if (resolved === "") {
       resolved = level;
     } else {
       const parent = `:is(${resolved})`;
-      resolved = splitTopLevel(level)
-        .map((piece) => (piece.includes("&") ? piece.replace(/&/g, parent) : `${parent} ${piece}`))
+      const pieces = splitTopLevel(level);
+      if (pieces.length * parent.length > MAX_NESTED_LENGTH) return UNREADABLE_NESTING;
+      resolved = pieces
+        .map((piece) => (piece.includes("&") ? piece.split("&").join(parent) : `${parent} ${piece}`))
         .join(", ");
+      if (resolved.length > MAX_NESTED_LENGTH) return UNREADABLE_NESTING;
     }
   }
   return resolved;
@@ -507,7 +523,14 @@ function previousElement(element) {
   return siblingLists.get(parent)[positionOf(element).index - 2] ?? null;
 }
 
+const MAX_MATCH_STEPS = 50_000;
+const TOO_MANY_STEPS = new Error("too many steps");
+let stepsLeft = 0;
+let activeMatches = 0;
+
 function matchFrom(parts, index, element) {
+  stepsLeft -= 1;
+  if (stepsLeft < 0) throw TOO_MANY_STEPS;
   if (!compoundMatches(parts[index].compound, element)) return false;
   if (index === 0) return true;
   const { combinator } = parts[index];
@@ -531,10 +554,22 @@ function matchFrom(parts, index, element) {
   return false;
 }
 
-// Could this parsed selector apply to this element?
+// Could this parsed selector apply to this element? A chain of "~" or descendant combinators
+// can take exponential time to rule out, so past a limit the answer is yes, which is the
+// answer this function gives for anything else it cannot decide.
 export function matchesSelector(element, complex) {
   if (complex.unparsed) return true;
-  return matchFrom(complex.parts, complex.parts.length - 1, element);
+  if (activeMatches === 0) stepsLeft = MAX_MATCH_STEPS;
+  activeMatches += 1;
+  try {
+    return matchFrom(complex.parts, complex.parts.length - 1, element);
+  } catch (error) {
+    if (error !== TOO_MANY_STEPS && !(error instanceof RangeError)) throw error;
+    if (activeMatches > 1) throw error;
+    return true;
+  } finally {
+    activeMatches -= 1;
+  }
 }
 
 // The same question for a selector list in text form, for callers with one selector to test.

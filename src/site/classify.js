@@ -1,7 +1,7 @@
 // Page classifications shared by rules: which pages are real, indexable content, and which
-// are error pages, redirects or pages that opted out of indexing.
+// are error pages, redirects or pages that opted out of indexing. Each takes a page or the
+// summary the site keeps of one.
 
-import { getAttr } from "../html/tree.js";
 import { resolveReference } from "./urls.js";
 
 const ERROR_PAGE = /(?:^|\/)(?:404|500|not-found|error)(?:\/index)?\.html?$/i;
@@ -12,16 +12,11 @@ export function isErrorPage(page) {
 }
 
 export function isNoindex(page) {
-  return ["robots", "googlebot"].some((name) =>
-    page.metaElements(name).some((meta) => /\b(noindex|none)\b/i.test(getAttr(meta, "content") ?? "")),
-  );
+  return page.noindex;
 }
 
 export function isRedirectPage(page) {
-  // A refresh with no URL reloads the same page, which is not a redirect.
-  return page.all("meta").some(
-    (meta) => (getAttr(meta, "http-equiv") ?? "").trim().toLowerCase() === "refresh" && /url\s*=/i.test(getAttr(meta, "content") ?? ""),
-  );
+  return page.redirect;
 }
 
 export function isIndexable(page) {
@@ -31,8 +26,7 @@ export function isIndexable(page) {
 
 // True when the canonical link of a page names a different page.
 export function hasCanonicalElsewhere(page, site) {
-  const canonical = page.all("link").find((link) => (getAttr(link, "rel") ?? "").trim().toLowerCase() === "canonical");
-  const href = canonical ? getAttr(canonical, "href") : null;
+  const href = page.canonicalHref;
   if (!href) return false;
   const resolved = resolveReference(href, page.baseUrl, site);
   if (resolved.kind === "external") return true;

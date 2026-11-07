@@ -39,7 +39,7 @@ const pureColor = {
       if (!COLOR_PROPERTY.test(property) && !property.startsWith("--")) continue;
       if (ignoredProperty(property) || isExemptMedia(declaration.atRules)) continue;
       if (options.ignoreSelectors.some((part) => declaration.selector.includes(part))) continue;
-      if (options.ignoreUnused && !site.selectorInUse(declaration.selectorPath)) continue;
+      if (options.ignoreUnused && !site.selectorInUse(declaration.selectorPath, source)) continue;
       for (const { color, text, index } of findPureColors(declaration.value)) {
         report({
           file: source.file,
@@ -79,7 +79,7 @@ const bannedFont = {
     for (const declaration of source.declarations) {
       const families = familiesFromDeclaration(declaration.property, declaration.value);
       if (!families || families.length === 0) continue;
-      if (options.ignoreUnused && !site.selectorInUse(declaration.selectorPath)) continue;
+      if (options.ignoreUnused && !site.selectorInUse(declaration.selectorPath, source)) continue;
       for (const family of options.checkFallbacks ? families : families.slice(0, 1)) {
         if (banned.has(normalizeFamily(family))) {
           report({
@@ -351,31 +351,78 @@ function widthReaches(target, declaration, options) {
   return true;
 }
 
-function reportOversizedWidths(source, { site, options, report }) {
-  for (const declaration of source.declarations) {
-    if (!OVERSIZED_PROPERTY.has(declaration.property)) continue;
+function oversizedDeclarations(source, options) {
+  return source.declarations.filter((declaration) => {
+    if (!OVERSIZED_PROPERTY.has(declaration.property)) return false;
     const length = lengthInPixels(declaration.value, options);
-    if (length === null || length <= options.phoneWidth || !appliesOnPhone(declaration.atRules, options)) continue;
-    if (declaration.atRules.some((rule) => /^@(?:-\w+-)?(?:keyframes|page|font-face)\b/i.test(rule))) continue;
-    if (WIDTH_UTILITY_SELECTOR.test(declaration.selector) || declaration.selector.includes("::")) continue;
-    let targets;
-    if (source.kind === "inline") {
-      targets = [{ page: site.page(source.file), element: source.element }];
-    } else {
-      if (declaration.selectorPath.length === 0) continue;
-      targets = site.matchingElements(declaration.selectorPath);
-      if (targets.length === 0) {
-        if (options.ignoreUnused) continue;
-      } else if (!targets.some((target) => widthReaches(target, declaration, options))) {
-        continue;
+    if (length === null || length <= options.phoneWidth || !appliesOnPhone(declaration.atRules, options)) return false;
+    if (declaration.atRules.some((rule) => /^@(?:-\w+-)?(?:keyframes|page|font-face)\b/i.test(rule))) return false;
+    return !WIDTH_UTILITY_SELECTOR.test(declaration.selector) && !declaration.selector.includes("::");
+  });
+}
+
+function reportOversized(source, declaration, { options, report }) {
+  report({
+    file: source.file,
+    offset: source.baseOffset + declaration.offset,
+    message: `${declaration.property}: ${declaration.value.trim()} is wider than a ${options.phoneWidth}px phone`,
+  });
+}
+
+// A style attribute or <style> block reaches only its own page.
+function reportOversizedOnPage(source, context) {
+  const { site, options } = context;
+  for (const declaration of oversizedDeclarations(source, options)) {
+    if (source.kind !== "inline" && declaration.selectorPath.length === 0) continue;
+    const elements = source.kind === "inline" ? [source.element] : site.matchingElements(source.page, declaration.selectorPath);
+    if (elements.length === 0) {
+      if (options.ignoreUnused) continue;
+    } else if (!elements.some((element) => widthReaches({ page: source.page, element }, declaration, options))) {
+      continue;
+    }
+    reportOversized(source, declaration, context);
+  }
+}
+
+// A stylesheet file can reach any page, so its fixed widths are tried against each page in turn
+// until one is found to reach an element. These lists live for one run.
+const openWidths = new WeakMap();
+
+function widthsToCheck(site, options) {
+  if (!openWidths.has(site)) {
+    const open = [];
+    for (const source of site.stylesheets) {
+      for (const declaration of oversizedDeclarations(source, options)) {
+        if (declaration.selectorPath.length > 0) open.push({ source, declaration, matched: false, done: false });
       }
     }
-    if (source.kind === "inline" && !widthReaches(targets[0], declaration, options)) continue;
-    report({
-      file: source.file,
-      offset: source.baseOffset + declaration.offset,
-      message: `${declaration.property}: ${declaration.value.trim()} is wider than a ${options.phoneWidth}px phone`,
-    });
+    openWidths.set(site, open);
+  }
+  return openWidths.get(site);
+}
+
+function checkFileWidthsOnPage(page, context) {
+  const { site, options } = context;
+  for (const check of widthsToCheck(site, options)) {
+    if (check.done) continue;
+    const elements = site.matchingElements(page, check.declaration.selectorPath);
+    if (elements.length > 0) check.matched = true;
+    if (elements.some((element) => widthReaches({ page, element }, check.declaration, options))) {
+      check.done = true;
+      reportOversized(check.source, check.declaration, context);
+    }
+  }
+}
+
+// With ignoreUnused off, a width that matched nothing anywhere is still reported.
+function reportUnmatchedFileWidths(source, context) {
+  const { site, options } = context;
+  if (options.ignoreUnused) return;
+  for (const check of widthsToCheck(site, options)) {
+    if (check.source === source && !check.matched && !check.done) {
+      check.done = true;
+      reportOversized(source, check.declaration, context);
+    }
   }
 }
 
@@ -392,7 +439,9 @@ const phoneOverflow = {
   description: "A layout that cannot fit at phone width: a grid whose gaps alone are wider than the phone, or a fixed width or min-width wider than the phone.",
   options: { phoneWidth: 390, spacingUnit: 4, rootFontSize: 16, classPatterns: [], ignoreUnused: true },
   validate: compileClassPatterns,
-  page(page, { options, report }) {
+  page(page, context) {
+    const { options, report } = context;
+    checkFileWidthsOnPage(page, context);
     const extra = compileClassPatterns(options);
     for (const element of page.elements) {
       if (!element.attrs.has("class")) continue;
@@ -410,7 +459,8 @@ const phoneOverflow = {
   },
   stylesheet(source, context) {
     const { site, options, report } = context;
-    reportOversizedWidths(source, context);
+    if (source.kind === "file") reportUnmatchedFileWidths(source, context);
+    else reportOversizedOnPage(source, context);
     const blocks = new Map();
     for (const declaration of source.declarations) {
       if (!blocks.has(declaration.block)) blocks.set(declaration.block, []);
@@ -430,7 +480,7 @@ const phoneOverflow = {
     for (const declarations of blocks.values()) {
       const problem = overflows(declarations);
       if (!problem || !appliesOnPhone(problem.grid.atRules, options)) continue;
-      if (options.ignoreUnused && !site.selectorInUse(problem.grid.selectorPath)) continue;
+      if (options.ignoreUnused && !site.selectorInUse(problem.grid.selectorPath, source)) continue;
       report({
         file: source.file,
         offset: source.baseOffset + problem.grid.offset,

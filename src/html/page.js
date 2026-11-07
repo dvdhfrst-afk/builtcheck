@@ -1,10 +1,13 @@
-// A built HTML page, parsed once and exposed in the terms the rules think in: its visible
-// text, headings, ids, structured data blocks and embedded styles.
+// A built HTML page, exposed in the terms the rules think in: its visible text, headings, ids,
+// structured data blocks and embedded styles. A parsed page is many times the size of its file,
+// so the site keeps only a summary of each one and parses it again when the rules run. What
+// only the rules need is worked out on first use.
 
 import { Suppressions, parseDirective, parseRuleList } from "../engine/suppressions.js";
 import { LineIndex } from "../site/lines.js";
 import { nextRuleEnd, scanCss } from "../css/scanner.js";
 import { isJsonLdScript, parseJsonLdText } from "../schema/jsonld.js";
+import { matchesSelector, requiredNames, selectorKey } from "../css/selectors.js";
 import { buildTree, classList, getAttr, hasAttr, isHeadingName, textContent, walk } from "./tree.js";
 
 // Elements whose text is code, data or otherwise not reading copy.
@@ -19,6 +22,12 @@ function isHiddenElement(element) {
   if (hasAttr(element, "hidden")) return true;
   const style = getAttr(element, "style");
   return style !== null && HIDING_STYLE.test(style);
+}
+
+// A copy of a string that does not keep alive the text it was cut from. JavaScript engines
+// implement slices as views of the parent, which here would be the whole page.
+export function detached(text) {
+  return text === null ? null : Buffer.from(text, "utf8").toString("utf8");
 }
 
 export class Page {
@@ -36,12 +45,111 @@ export class Page {
       if (!this.byName.has(element.name)) this.byName.set(element.name, []);
       this.byName.get(element.name).push(element);
     }
+    this.derived = new Map();
     this.ids = this.collectIds();
-    this.textRuns = this.collectVisibleText();
-    this.headings = this.collectHeadings();
-    this.jsonLd = this.collectJsonLd();
-    this.styleSources = this.collectStyleSources();
-    this.suppressions = this.collectSuppressions();
+  }
+
+  once(key, compute) {
+    if (!this.derived.has(key)) this.derived.set(key, compute());
+    return this.derived.get(key);
+  }
+
+  get textRuns() {
+    return this.once("textRuns", () => {
+      const runs = this.collectVisibleText();
+      const { styles } = this;
+      return styles ? runs.filter((run) => run.parent.name === "title" || !styles.isAlwaysHidden(run.parent)) : runs;
+    });
+  }
+
+  get headings() {
+    return this.once("headings", () => this.collectHeadings());
+  }
+
+  get jsonLd() {
+    return this.once("jsonLd", () => this.collectJsonLd());
+  }
+
+  get styleSources() {
+    return this.once("styleSources", () => this.collectStyleSources());
+  }
+
+  get suppressions() {
+    return this.once("suppressions", () => this.collectSuppressions());
+  }
+
+  // Elements by "tag", "#id" and ".class", for matching selectors against this page.
+  get elementIndex() {
+    return this.once("elementIndex", () => {
+      const index = new Map();
+      const add = (key, element) => {
+        if (!index.has(key)) index.set(key, []);
+        index.get(key).push(element);
+      };
+      for (const element of this.elements) {
+        add(element.name, element);
+        const id = getAttr(element, "id");
+        if (id) add(`#${id}`, element);
+        for (const name of classList(element)) add(`.${name}`, element);
+      }
+      return index;
+    });
+  }
+
+  // Up to `limit` elements on this page that a parsed selector could match.
+  matching(complex, limit = Infinity) {
+    const index = this.elementIndex;
+    if (requiredNames(complex).some((name) => !index.has(name))) return [];
+    const key = selectorKey(complex);
+    const candidates = key === null ? this.elements : index.get(key) ?? [];
+    const found = [];
+    for (const element of candidates) {
+      if (found.length >= limit) break;
+      if (matchesSelector(element, complex)) found.push(element);
+    }
+    return found;
+  }
+
+  // What the site keeps once this tree is gone: what other pages and site-wide rules ask about.
+  summary() {
+    const canonical = this.all("link").find((link) => (getAttr(link, "rel") ?? "").trim().toLowerCase() === "canonical");
+    const socialImages = [];
+    for (const key of ["og:image", "og:image:url", "og:image:secure_url"]) {
+      for (const meta of this.metaElements(key)) {
+        const content = getAttr(meta, "content");
+        if (content !== null && content.trim() !== "") socialImages.push(content);
+      }
+    }
+    const base = this.first("base");
+    return {
+      file: this.file,
+      ids: new Set([...this.ids].map(detached)),
+      noindex: this.noindex,
+      redirect: this.redirect,
+      canonicalHref: canonical ? detached(getAttr(canonical, "href")) : null,
+      baseHref: base ? detached(getAttr(base, "href")) : null,
+      socialImages: socialImages.map(detached),
+      // Ignore comments are rare, and site-wide rules have to honor them.
+      suppressions: this.source.includes("builtcheck-ignore") ? this.suppressions : null,
+    };
+  }
+
+  get noindex() {
+    return ["robots", "googlebot"].some((name) =>
+      this.metaElements(name).some((meta) => /\b(noindex|none)\b/i.test(getAttr(meta, "content") ?? "")),
+    );
+  }
+
+  get redirect() {
+    // A refresh with no URL reloads the same page, which is not a redirect.
+    return this.all("meta").some(
+      (meta) => (getAttr(meta, "http-equiv") ?? "").trim().toLowerCase() === "refresh" && /url\s*=/i.test(getAttr(meta, "content") ?? ""),
+    );
+  }
+
+  get canonicalHref() {
+    const canonical = this.all("link").find((link) => (getAttr(link, "rel") ?? "").trim().toLowerCase() === "canonical");
+    return canonical ? getAttr(canonical, "href") : null;
   }
 
   all(name) {
@@ -127,11 +235,11 @@ export class Page {
     return blocks;
   }
 
-  // Connects the page to its stylesheets, once the whole site is loaded, and drops text that a
-  // stylesheet always hides from the visible text.
+  // Connects the page to its stylesheets. Text that a stylesheet always hides stops counting as
+  // visible text.
   applyStyles(styles) {
     this.styles = styles;
-    this.textRuns = this.textRuns.filter((run) => run.parent.name === "title" || !styles.isAlwaysHidden(run.parent));
+    this.derived.delete("textRuns");
   }
 
   // All parsed nodes across every block on the page.
@@ -146,12 +254,12 @@ export class Page {
       if (type !== null && type.trim() !== "" && type.trim().toLowerCase() !== "text/css") continue;
       const textNode = style.children.find((child) => child.type === "text");
       if (!textNode) continue;
-      sources.push({ file: this.file, kind: "block", baseOffset: textNode.start, ...scanCss(textNode.value), element: style });
+      sources.push({ file: this.file, kind: "block", baseOffset: textNode.start, ...scanCss(textNode.value), element: style, page: this });
     }
     for (const element of this.elements) {
       const attr = element.attrs.get("style");
       if (!attr || attr.value.trim() === "") continue;
-      sources.push({ file: this.file, kind: "inline", baseOffset: attr.valueStart, ...scanCss(attr.value), element });
+      sources.push({ file: this.file, kind: "inline", baseOffset: attr.valueStart, ...scanCss(attr.value), element, page: this });
     }
     return sources;
   }

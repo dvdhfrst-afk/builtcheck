@@ -1,6 +1,7 @@
 // Loads and validates configuration, and merges it over the defaults each rule declares.
 
 import { readFileSync } from "node:fs";
+import { ruleMatches } from "./suppressions.js";
 
 export class ConfigError extends Error {}
 
@@ -136,7 +137,7 @@ function applySetting(settings, rule, value, where) {
 
 // Combines a user config with rule defaults. Result:
 //   { site, ignore, rules: { [id]: { severity, options } } }
-export function resolveConfig(user, rules) {
+export function resolveConfig(user, rules, selection = {}) {
   if (!isPlainObject(user)) throw new ConfigError("Config must be a JSON object");
   for (const key of Object.keys(user)) {
     if (!["site", "ignore", "rules"].includes(key)) {
@@ -180,6 +181,17 @@ export function resolveConfig(user, rules) {
     applySetting(resolved[key], rule, value, `rules."${key}"`);
   }
 
+  const only = selection.only ?? [];
+  const skip = selection.skip ?? [];
+  for (const pattern of [...only, ...skip]) {
+    if (!rules.some((rule) => ruleMatches([pattern], rule.id))) {
+      throw new ConfigError(`"${pattern}" matches no rule.${closestRuleId(pattern, rules)}`);
+    }
+  }
+  for (const rule of rules) {
+    if ((only.length > 0 && !ruleMatches(only, rule.id)) || ruleMatches(skip, rule.id)) resolved[rule.id].severity = "off";
+  }
+
   for (const rule of rules) {
     try {
       rule.validate?.(resolved[rule.id].options);
@@ -202,7 +214,8 @@ export function readConfigFile(path) {
     // Some shells write redirected output as UTF-16 with a byte order mark.
     text = buffer[0] === 0xff && buffer[1] === 0xfe ? buffer.toString("utf16le") : buffer.toString("utf8");
   } catch (error) {
-    throw new ConfigError(`Cannot read config file ${path}: ${error.message}`);
+    const reason = { ENOENT: "no such file", EISDIR: "that path is a folder", EACCES: "permission denied", EPERM: "permission denied" }[error.code];
+    throw new ConfigError(`Cannot read config file ${path}: ${reason ?? error.message}`);
   }
   try {
     return JSON.parse(text.replace(/^\ufeff/, ""));

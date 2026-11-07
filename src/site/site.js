@@ -1,13 +1,15 @@
-// The built site as a whole: its files, parsed pages and stylesheets, and how a URL path maps
-// to a file once deployed.
+// The built site as a whole: its files, stylesheets and a summary of each page, and how a URL
+// path maps to a file once deployed. Memory stays flat however many pages there are: the first
+// pass over the pages keeps a summary of each and works out which CSS selectors are in use, and
+// the rules then run in a second pass that holds one parsed page at a time.
 
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { join, sep } from "node:path";
 import { Page } from "../html/page.js";
-import { getAttr } from "../html/tree.js";
 import { nextRuleEnd, scanCss } from "../css/scanner.js";
 import { PageStyles } from "../css/cascade.js";
-import { matchesSelector, parseSelectorList, requiredNames, resolveNesting, selectorKey } from "../css/selectors.js";
+import { parseSelectorList, resolveNesting } from "../css/selectors.js";
+import { SelectorUse } from "../css/selector-use.js";
 import { Suppressions, parseDirective, suppressionsFromText } from "../engine/suppressions.js";
 import { LineIndex } from "./lines.js";
 import { expandFileGlob, makeMatcher } from "./glob.js";
@@ -18,35 +20,95 @@ import { baseUrlForFile } from "./urls.js";
 import { readImageSize } from "./images.js";
 
 const SKIPPED_DIRECTORIES = new Set([".git", "node_modules"]);
+const NO_SUPPRESSIONS = new Suppressions();
 const PAGE_FILE = /\.html?$/i;
 const STYLESHEET_FILE = /\.css$/i;
 
-function listFiles(root) {
+// A file this large is not hand-written HTML or CSS, and a parsed tree of it would not fit in memory.
+export const MAX_TEXT_BYTES = 32 * 1024 * 1024;
+
+function describeReadError(error) {
+  if (error.code === "EACCES" || error.code === "EPERM") return "permission denied";
+  if (error.code === "EBUSY") return "the file is locked by another program";
+  if (error.code === "ENOENT") return "the file disappeared during the run";
+  if (error.code === "EMFILE" || error.code === "ENFILE") return "too many files are open";
+  return error.code ?? error.message;
+}
+
+function isInside(folder, path) {
+  return path === folder || path.startsWith(folder.endsWith(sep) ? folder : `${folder}${sep}`);
+}
+
+// Lists the build. A symbolic link is followed only while it stays inside the site folder, so
+// auditing a folder never reads anything outside it. Result: { files, outside }, where `outside`
+// holds links to files elsewhere, which exist for link checks but are not opened.
+function listFiles(root, skip) {
   const files = [];
+  const outside = new Set();
+  const realRoot = realpathSync(root);
+  const visited = new Set([realRoot]);
   const pending = [""];
   while (pending.length > 0) {
     const relative = pending.pop();
-    for (const entry of readdirSync(join(root, relative), { withFileTypes: true })) {
+    let entries;
+    try {
+      entries = readdirSync(join(root, relative), { withFileTypes: true });
+    } catch (error) {
+      if (relative === "") throw error;
+      skip(relative, `could not list this folder: ${describeReadError(error)}`, true);
+      continue;
+    }
+    for (const entry of entries) {
       const path = relative === "" ? entry.name : `${relative}/${entry.name}`;
       if (entry.isDirectory()) {
-        if (!SKIPPED_DIRECTORIES.has(entry.name)) pending.push(path);
+        if (SKIPPED_DIRECTORIES.has(entry.name)) continue;
+        // Only a link can lead back to a folder, but a real folder can still be a link's target.
+        const real = realpathSync(join(root, path));
+        if (!visited.has(real)) {
+          visited.add(real);
+          pending.push(path);
+        }
       } else if (entry.isFile()) {
         files.push(path);
+      } else if (entry.isSymbolicLink()) {
+        let real;
+        let stats;
+        try {
+          real = realpathSync(join(root, path));
+          stats = statSync(real);
+        } catch {
+          skip(path, "broken symbolic link");
+          continue;
+        }
+        if (!isInside(realRoot, real)) {
+          if (stats.isFile()) outside.add(path);
+          skip(path, "symbolic link to something outside the site folder, so it was not read");
+          if (stats.isFile()) files.push(path);
+        } else if (stats.isDirectory()) {
+          if (!visited.has(real)) {
+            visited.add(real);
+            pending.push(path);
+          }
+        } else if (stats.isFile()) {
+          files.push(path);
+        }
       }
     }
   }
-  return files.sort();
+  return { files: files.sort(), outside };
 }
 
-function readText(root, file) {
-  return readFileSync(join(root, file), "utf8").replace(/^\ufeff/, "");
+function decodeBom(buffer) {
+  if (buffer[0] === 0xff && buffer[1] === 0xfe) return buffer.toString("utf16le").replace(/^\ufeff/, "");
+  if (buffer[0] === 0xfe && buffer[1] === 0xff) return new TextDecoder("utf-16be").decode(buffer).replace(/^\ufeff/, "");
+  return null;
 }
 
 // Pages are UTF-8 nearly always, but a page may declare otherwise and bytes must decode to the
 // same characters a browser would see.
-function readPageText(root, file) {
-  const buffer = readFileSync(join(root, file));
-  if (buffer[0] === 0xff && buffer[1] === 0xfe) return buffer.toString("utf16le").replace(/^\ufeff/, "");
+function decodePage(buffer) {
+  const marked = decodeBom(buffer);
+  if (marked !== null) return marked;
   const declared = /<meta\b[^>]*\bcharset\s*=\s*["']?\s*([\w-]+)/i.exec(buffer.toString("latin1", 0, 1024));
   if (declared && !/^utf-?8$/i.test(declared[1])) {
     try {
@@ -56,6 +118,10 @@ function readPageText(root, file) {
     }
   }
   return buffer.toString("utf8").replace(/^\ufeff/, "");
+}
+
+function decodeText(buffer) {
+  return decodeBom(buffer) ?? buffer.toString("utf8").replace(/^\ufeff/, "");
 }
 
 function normalizeBasePath(value) {
@@ -86,20 +152,24 @@ export class Site {
   constructor(root, config) {
     this.root = root;
     this.config = config;
-    this.files = new Set(listFiles(root));
+    // Files the audit could not cover: [{ file, reason, incomplete }]. "Incomplete" means something
+    // went wrong rather than a file being left out on purpose.
+    this.skipped = [];
+    const listed = listFiles(root, (file, reason, incomplete = false) => this.skip(file, reason, incomplete));
+    this.files = new Set(listed.files);
+    this.outsideFiles = listed.outside;
     this.lowerCaseFiles = new Map();
     for (const file of this.files) this.lowerCaseFiles.set(file.toLowerCase(), file);
 
-    const ignored = makeMatcher(config.ignore.flatMap(expandFileGlob));
+    this.ignored = makeMatcher(config.ignore.flatMap(expandFileGlob));
     this.pages = [];
     this.pagesByFile = new Map();
     this.stylesheets = [];
     this.stylesheetsByFile = new Map();
-    this.selectorUse = new Map();
-    this.elementNames = null;
     this.lineIndexes = new Map();
     this.suppressionsByFile = new Map();
     this.externalPath = makeMatcher(config.site.externalPaths);
+    this.currentPage = null;
 
     this.basePath = normalizeBasePath(config.site.basePath);
     this.ownHost = null;
@@ -110,35 +180,82 @@ export class Site {
       if (!config.site.basePath) this.basePath = normalizeBasePath(url.pathname);
     }
 
-    this.redirects = this.hasFile("_redirects") ? parseRedirects(readText(root, "_redirects")) : [];
-    this.robots = this.hasFile("robots.txt") ? parseRobots(readText(root, "robots.txt")) : null;
+    const redirects = this.hasFile("_redirects") ? this.readText("_redirects") : null;
+    this.redirects = redirects === null ? [] : parseRedirects(redirects);
+    const robots = this.hasFile("robots.txt") ? this.readText("robots.txt") : null;
+    this.robots = robots === null ? null : parseRobots(robots);
     this.sitemaps = loadSitemaps(this, config.site.sitemapPaths, this.robots);
 
     for (const file of this.files) {
-      if (ignored(file)) continue;
-      if (PAGE_FILE.test(file)) {
-        const page = new Page(file, readPageText(root, file));
-        this.pages.push(page);
-        this.pagesByFile.set(file, page);
-      } else if (STYLESHEET_FILE.test(file)) {
-        const source = readText(root, file);
-        const sheet = { file, kind: "file", baseOffset: 0, ...scanCss(source) };
-        this.stylesheets.push(sheet);
-        this.stylesheetsByFile.set(file, sheet);
-        this.lineIndexes.set(file, new LineIndex(source));
-        this.suppressionsByFile.set(file, this.stylesheetSuppressions(sheet, source));
-      }
+      if (!STYLESHEET_FILE.test(file) || this.ignored(file)) continue;
+      const source = this.readText(file);
+      if (source === null) continue;
+      const sheet = { file, kind: "file", baseOffset: 0, ...scanCss(source) };
+      this.stylesheets.push(sheet);
+      this.stylesheetsByFile.set(file, sheet);
+      this.lineIndexes.set(file, new LineIndex(source));
+      this.suppressionsByFile.set(file, this.stylesheetSuppressions(sheet, source));
+    }
+
+    this.selectorUse = new SelectorUse(this.stylesheets);
+    for (const file of this.files) {
+      if (!PAGE_FILE.test(file) || this.ignored(file)) continue;
+      const page = this.parsePage(file);
+      if (!page) continue;
+      const summary = page.summary();
+      summary.site = this;
+      this.pages.push(summary);
+      this.pagesByFile.set(file, summary);
+      this.selectorUse.visit(page);
     }
 
     if (!this.ownHost) this.ownHost = this.inferOwnHost();
     if (!config.site.basePath && this.basePath === "") this.basePath = this.inferBasePath();
-    for (const page of this.pages) {
-      page.site = this;
-      page.ownUrl = baseUrlForFile(page.file, this);
-      const base = page.first("base");
-      page.baseUrl = baseUrlForFile(page.file, this, base ? getAttr(base, "href") : null);
+    for (const summary of this.pages) {
+      summary.ownUrl = baseUrlForFile(summary.file, this);
+      summary.baseUrl = baseUrlForFile(summary.file, this, summary.baseHref);
     }
-    for (const page of this.pages) page.applyStyles(new PageStyles(page, this));
+  }
+
+  skip(file, reason, incomplete = false) {
+    this.skipped.push({ file, reason, incomplete });
+  }
+
+  // Reads a file, or records why it could not be read and returns null.
+  readBounded(file, limit = MAX_TEXT_BYTES) {
+    if (this.outsideFiles.has(file)) return null;
+    const path = join(this.root, file);
+    try {
+      if (statSync(path).size > limit) {
+        this.skip(file, `larger than ${Math.round(limit / (1024 * 1024))} MiB, so it was not read`);
+        return null;
+      }
+      return readFileSync(path);
+    } catch (error) {
+      this.skip(file, `could not be read: ${describeReadError(error)}`, true);
+      return null;
+    }
+  }
+
+  parsePage(file) {
+    const buffer = this.readBounded(file);
+    return buffer === null ? null : new Page(file, decodePage(buffer));
+  }
+
+  // The pages one at a time, fully parsed and connected to their stylesheets. Only one is held
+  // at a time, so rules that need something from another page ask for its summary.
+  *eachPage() {
+    for (const summary of this.pages) {
+      const page = this.parsePage(summary.file);
+      if (!page) continue;
+      page.site = this;
+      page.ownUrl = summary.ownUrl;
+      page.baseUrl = summary.baseUrl;
+      page.applyStyles(new PageStyles(page, this));
+      this.currentPage = page;
+      yield page;
+    }
+    this.currentPage = null;
   }
 
   stylesheetSuppressions(sheet, source) {
@@ -170,9 +287,7 @@ export class Site {
       for (const sitemap of this.robots.sitemaps) count(sitemap.url);
     }
     if (counts.size === 0) {
-      for (const page of this.pages) {
-        const canonical = page.all("link").find((link) => (getAttr(link, "rel") ?? "").toLowerCase() === "canonical");
-        const href = canonical ? getAttr(canonical, "href") : null;
+      for (const { canonicalHref: href } of this.pages) {
         // A canonical can name another site entirely, as with a post republished from elsewhere.
         // It says something about this host only if the path it names is in this build.
         if (href && this.isBuiltPath(href)) count(href);
@@ -240,18 +355,24 @@ export class Site {
     return this.files.has(file);
   }
 
-  readBuffer(file) {
-    return readFileSync(join(this.root, file));
+  // Bytes for a file up to the limit, or null if it could not be read.
+  readBuffer(file, limit = MAX_TEXT_BYTES) {
+    return this.readBounded(file, limit);
   }
 
   readText(file) {
-    return readText(this.root, file);
+    const buffer = this.readBounded(file);
+    return buffer === null ? null : decodeText(buffer);
   }
 
+  // Width and height, null if the bytes are not a readable PNG or JPEG, or undefined if the file
+  // could not be read at all.
   imageSize(file) {
-    return readImageSize(this.readBuffer(file));
+    const buffer = this.readBounded(file, 1024 * 1024 * 1024);
+    return buffer === null ? undefined : readImageSize(buffer);
   }
 
+  // The summary of a page: its file, ids and classification. See Page.summary().
   page(file) {
     return this.pagesByFile.get(file) ?? null;
   }
@@ -260,82 +381,28 @@ export class Site {
     return this.stylesheetsByFile.get(file) ?? null;
   }
 
-  // Every tag, "#id" and ".class" on any page, to rule out most unused selectors at once.
-  namesInBuild() {
-    if (this.elementNames) return this.elementNames;
-    const names = new Map();
-    const add = (key, page, element) => {
-      if (!names.has(key)) names.set(key, new Map());
-      const byPage = names.get(key);
-      if (!byPage.has(page)) byPage.set(page, []);
-      byPage.get(page).push(element);
-    };
-    for (const page of this.pages) {
-      for (const element of page.elements) {
-        add(element.name, page, element);
-        const id = getAttr(element, "id");
-        if (id) add(`#${id}`, page, element);
-        for (const name of (getAttr(element, "class") ?? "").split(/\s+/)) {
-          if (name) add(`.${name}`, page, element);
-        }
-      }
-    }
-    this.elementNames = names;
-    return names;
-  }
-
-  // Whether a selector, as a chain of nested selector lists, could match anything on any page.
-  // A rule with no selector, such as an inline style or @font-face, always counts.
-  selectorInUse(selectorPath) {
+  // Whether a selector, as a chain of nested selector lists, could match anything. A rule with no
+  // selector, such as an inline style or @font-face, always counts. A <style> block answers for
+  // its own page and a stylesheet file for the whole build.
+  selectorInUse(selectorPath, source = null) {
     if (selectorPath.length === 0) return true;
     const text = resolveNesting(selectorPath);
-    if (this.selectorUse.has(text)) return this.selectorUse.get(text);
-    const inUse = parseSelectorList(text).some((complex) => this.complexInUse(complex));
-    this.selectorUse.set(text, inUse);
-    return inUse;
+    if (source?.page) {
+      return parseSelectorList(text).some((complex) => complex.unparsed || complex.unknownPseudo || source.page.matching(complex, 1).length > 0);
+    }
+    return this.selectorUse.isUsed(text);
   }
 
-  // Up to `limit` elements a selector could match, each with its page. An empty list means
-  // nothing in the build uses it, or the selector is one this tool cannot judge.
-  matchingElements(selectorPath, limit = 50) {
+  // The elements on one page that a selector could match, up to a limit. Selectors this tool
+  // cannot judge match nothing here.
+  matchingElements(page, selectorPath, limit = 50) {
     const found = [];
     for (const complex of parseSelectorList(resolveNesting(selectorPath))) {
       if (complex.unparsed || complex.unknownPseudo) continue;
-      const key = selectorKey(complex);
-      const groups = key === null
-        ? this.pages.map((page) => [page, page.elements])
-        : [...(this.namesInBuild().get(key) ?? new Map())];
-      for (const [page, elements] of groups) {
-        for (const element of elements) {
-          if (found.length >= limit) return found;
-          if (matchesSelector(element, complex)) found.push({ page, element });
-        }
-      }
+      found.push(...page.matching(complex, limit - found.length));
+      if (found.length >= limit) break;
     }
     return found;
-  }
-
-  complexInUse(complex) {
-    // A selector this tool cannot read, or a pseudo-class it does not know, gets the benefit
-    // of the doubt.
-    if (complex.unparsed || complex.unknownPseudo) return true;
-    const names = this.namesInBuild();
-    // Every class and id a selector needs has to exist somewhere, which rules out most unused
-    // CSS without visiting an element.
-    if (requiredNames(complex).some((name) => !names.has(name))) return false;
-    const key = selectorKey(complex);
-    if (key === null) return this.pages.some((page) => page.elements.some((element) => matchesSelector(element, complex)));
-    const byPage = names.get(key);
-    if (!byPage) return false;
-    for (const elements of byPage.values()) {
-      if (elements.some((element) => matchesSelector(element, complex))) return true;
-    }
-    return false;
-  }
-
-  // Every place CSS lives: stylesheet files, <style> blocks and style attributes.
-  get styleSources() {
-    return [...this.stylesheets, ...this.pages.flatMap((page) => page.styleSources)];
   }
 
   // What a URL path serves once deployed. Result:
@@ -378,21 +445,22 @@ export class Site {
   }
 
   lineIndexFor(file) {
-    const page = this.pagesByFile.get(file);
-    if (page) return page.lines;
+    if (this.currentPage?.file === file) return this.currentPage.lines;
+    if (this.pagesByFile.has(file)) return null;
     if (!this.lineIndexes.has(file)) {
-      const readable = this.files.has(file) && !file.endsWith(".gz");
-      this.lineIndexes.set(file, readable ? new LineIndex(this.readText(file)) : null);
+      const text = this.files.has(file) && !file.endsWith(".gz") ? this.readText(file) : null;
+      this.lineIndexes.set(file, text === null ? null : new LineIndex(text));
     }
     return this.lineIndexes.get(file);
   }
 
   suppressionsFor(file) {
-    const page = this.pagesByFile.get(file);
-    if (page) return page.suppressions;
+    if (this.currentPage?.file === file) return this.currentPage.suppressions;
+    const summary = this.pagesByFile.get(file);
+    if (summary) return summary.suppressions ?? NO_SUPPRESSIONS;
     if (!this.suppressionsByFile.has(file)) {
-      const isText = this.files.has(file) && /(?:\.txt|\.xml|^_redirects)$/i.test(file);
-      this.suppressionsByFile.set(file, isText ? suppressionsFromText(this.readText(file)) : new Suppressions());
+      const text = this.files.has(file) && /(?:\.txt|\.xml|^_redirects)$/i.test(file) ? this.readText(file) : null;
+      this.suppressionsByFile.set(file, text === null ? NO_SUPPRESSIONS : suppressionsFromText(text));
     }
     return this.suppressionsByFile.get(file);
   }

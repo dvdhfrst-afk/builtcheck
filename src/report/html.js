@@ -63,6 +63,7 @@ li.error .severity { color: var(--error); }
 li.warning .severity { color: var(--warning); }
 li .message { overflow-wrap: anywhere; }
 li .rule { grid-column: 3; color: var(--muted); font: 12px ui-monospace, Menlo, Consolas, monospace; }
+li.note { display: block; }
 .clean { padding: 32px 0; color: var(--ok); font-size: 18px; }
 @media (max-width: 560px) {
   li { grid-template-columns: 4em 1fr; }
@@ -105,6 +106,12 @@ function renderFinding(finding) {
     `<span class="rule">${escapeHtml(finding.rule)}</span>` +
     `</li>`
   );
+}
+
+function skippedSection(skipped) {
+  if (skipped.length === 0) return "";
+  const items = skipped.map(({ file, reason }) => `<li class="note"><span class="message">${escapeHtml(file)}: ${escapeHtml(reason)}</span></li>`).join("");
+  return `<details open data-file="" class="skipped"><summary>Not covered by this audit<small>${skipped.length}</small></summary><ul>${items}</ul></details>\n`;
 }
 
 export function formatHtml(result) {
@@ -154,7 +161,7 @@ ${groups}
 <div class="total ${summary.warnings ? "warning" : "ok"}"><b>${summary.warnings}</b>${summary.warnings === 1 ? "warning" : "warnings"}</div>
 <div class="total"><b>${summary.suppressed}</b>ignored inline</div>
 </div>
-${body}
+${skippedSection(result.skipped ?? [])}${body}
 </main>
 </body>
 </html>

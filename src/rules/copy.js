@@ -45,8 +45,9 @@ const DOUBLE_HYPHEN = /(?<![-<])--(?![->])/g;
 
 // Hyphens inside a URL, a domain or a file name are part of the name.
 function isInsideTechnicalName(text, index) {
-  const before = text.slice(0, index).split(/\s/).pop();
-  const after = text.slice(index).split(/\s/)[0];
+  // A long enough window to hold any real name, so a long text stays linear.
+  const before = text.slice(Math.max(0, index - 256), index).split(/\s/).pop();
+  const after = text.slice(index, index + 256).split(/\s/)[0];
   const token = `${before}${after}`.replace(/[.,;:!?)\]]+$/, "");
   return /:\/\/|^www\.|^xn--|\/|@|_/i.test(token) || /[\w-]\.[a-z][a-z0-9]{0,7}$/i.test(token);
 }
@@ -128,7 +129,7 @@ const duplicateSubhead = {
 const DEFAULT_PATTERNS = [
   { label: "lorem ipsum", pattern: "\\blorem ipsum\\b", flags: "i" },
   { label: "unfinished marker", pattern: "\\b(?:TODO|FIXME|TBD|XXXX+)\\b|^\\s*XXX\\s*$" },
-  { label: "bracketed fill-in", pattern: "\\[\\s*(?:fill|insert|placeholder|todo|tbd|your)\\b[^\\]]*\\]", flags: "i" },
+  { label: "bracketed fill-in", pattern: "\\[\\s*(?:fill|insert|placeholder|todo|tbd|your)\\b[^\\[\\]]*\\]", flags: "i" },
   { label: "template company name", pattern: "\\bYour (?:Company|Business) Name\\b|^\\s*your (?:company|business) name\\s*$" },
   { label: "template text", pattern: "\\b(?:your text here|text goes here|content goes here)\\b|^\\s*(?:placeholder|sample|dummy) text\\s*\\.?\\s*$", flags: "i" },
   { label: "fill-in instruction", pattern: "^\\s*\\[?(?:insert|replace)\\b[^.,\\n]{1,40}\\bhere\\s*[.!\\]]?\\s*$", flags: "i" },

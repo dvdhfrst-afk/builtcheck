@@ -69,6 +69,7 @@ function skipBalancedBlock(text, open) {
 
 const CUSTOM_PROPERTY_PRELUDE = /^\s*--[\w-]*\s*:/;
 const PROPERTY_NAME = /^-{0,2}[a-zA-Z_][\w-]*$/;
+const MAX_TRACKED_DEPTH = 64;
 
 export function scanCss(text) {
   const { clean, comments } = stripComments(text);
@@ -81,16 +82,21 @@ export function scanCss(text) {
   let parens = 0;
   let i = 0;
 
+  // The enclosing rules of the current block, worked out once per block and shared by its
+  // declarations. Levels past the limit are all treated alike, as nesting that deep is hostile
+  // and would otherwise cost time and memory for every declaration inside it.
   const context = () => {
+    const top = stack[stack.length - 1];
+    if (top?.context) return top.context;
     const atRules = [];
     const selectorPath = [];
-    let block = 0;
-    for (const entry of stack) {
-      block = entry.id;
+    for (const entry of stack.slice(0, MAX_TRACKED_DEPTH)) {
       if (entry.prelude.startsWith("@")) atRules.push(entry.prelude);
       else selectorPath.push(entry.prelude);
     }
-    return { atRules, selector: selectorPath[selectorPath.length - 1] ?? "", selectorPath, block };
+    const found = { atRules, selector: selectorPath[selectorPath.length - 1] ?? "", selectorPath, block: top?.id ?? 0 };
+    if (top) top.context = found;
+    return found;
   };
 
   const finishStatement = (from, to) => {

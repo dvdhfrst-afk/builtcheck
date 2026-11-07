@@ -7,7 +7,7 @@ const SCHEMA_PREFIX = /^(?:https?:\/\/(?:www\.)?schema\.org\/|schema:)/i;
 const PRIMARY_KEYS = new Set(["mainEntity"]);
 
 // These properties have one possible type, so an object with no @type still has that type.
-const IMPLIED_TYPES = { speakable: "SpeakableSpecification", acceptedAnswer: "Answer" };
+const IMPLIED_TYPES = new Map([["speakable", "SpeakableSpecification"], ["acceptedAnswer", "Answer"]]);
 
 function asArray(value) {
   if (value === undefined || value === null) return [];
@@ -39,7 +39,7 @@ function addNode(object, primary, into, impliedType) {
     for (const child of asArray(value)) {
       if (!isObject(child)) continue;
       const isPrimaryChild = primary && PRIMARY_KEYS.has(key) && nodeTypes(child).length > 0;
-      addNode(child, isPrimaryChild, into, IMPLIED_TYPES[key]);
+      addNode(child, isPrimaryChild, into, IMPLIED_TYPES.get(key));
     }
   }
 }

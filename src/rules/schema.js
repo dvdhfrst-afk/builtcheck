@@ -73,11 +73,11 @@ const missingType = {
 };
 
 const DEFAULT_REQUIRED = {
-  LocalBusiness: ["name", "geo", "areaServed", "openingHoursSpecification", "aggregateRating", "review", "hasCredential", "makesOffer"],
-  Service: ["name|serviceType", "provider"],
+  LocalBusiness: ["name", "address"],
+  Service: ["name|serviceType"],
   FAQPage: ["mainEntity"],
   BreadcrumbList: ["itemListElement"],
-  Article: ["headline", "author", "datePublished"],
+  Article: ["headline"],
   SpeakableSpecification: ["cssSelector|xpath"],
   Question: ["name", "acceptedAnswer|suggestedAnswer"],
   Answer: ["text"],
@@ -94,25 +94,29 @@ function describeNode(node, typeName) {
   return typeof label === "string" && label.trim() !== "" ? `${typeName} "${label.trim()}"` : typeName;
 }
 
+function reportMissingFields(page, block, node, fieldLists, subtypes, report) {
+  for (const [parent, fields] of Object.entries(fieldLists)) {
+    if (!node.primary && !CHECKED_AT_ANY_DEPTH.has(parent)) continue;
+    const match = node.types.find((type) => isTypeOrSubtype(type, parent, subtypes));
+    if (!match || !Array.isArray(fields)) continue;
+    for (const field of fields) {
+      if (hasField(node.object, field)) continue;
+      const wanted = field.split("|").map((name) => `"${name}"`).join(" or ");
+      report({ file: page.file, offset: block.offset, message: `${describeNode(node, match)} is missing ${wanted}` });
+    }
+  }
+}
+
 const requiredField = {
   id: "schema/required-field",
   severity: "error",
-  description: "A JSON-LD node lacks a field its type requires. The field lists per type are configurable.",
+  description: "A JSON-LD node lacks a field its type cannot do without. The field lists per type are configurable.",
   options: { required: DEFAULT_REQUIRED, subtypes: {} },
   page(page, { options, report }) {
     for (const block of page.jsonLd) {
       if (!block.ok) continue;
       for (const node of block.nodes) {
-        for (const [parent, fields] of Object.entries(options.required)) {
-          if (!node.primary && !CHECKED_AT_ANY_DEPTH.has(parent)) continue;
-          const match = node.types.find((type) => isTypeOrSubtype(type, parent, options.subtypes));
-          if (!match || !Array.isArray(fields)) continue;
-          for (const field of fields) {
-            if (hasField(node.object, field)) continue;
-            const wanted = field.split("|").map((name) => `"${name}"`).join(" or ");
-            report({ file: page.file, offset: block.offset, message: `${describeNode(node, match)} is missing ${wanted}` });
-          }
-        }
+        reportMissingFields(page, block, node, options.required, options.subtypes, report);
         // Every breadcrumb except the last (the current page) must link somewhere.
         if (node.types.includes("BreadcrumbList")) {
           const items = asArray(node.object.itemListElement).filter(isObject);
@@ -124,6 +128,25 @@ const requiredField = {
           }
         }
       }
+    }
+  },
+};
+
+const DEFAULT_RECOMMENDED = {
+  LocalBusiness: ["geo", "areaServed", "openingHoursSpecification", "aggregateRating", "review", "hasCredential", "makesOffer"],
+  Service: ["provider"],
+  Article: ["author", "datePublished"],
+};
+
+const recommendedField = {
+  id: "schema/recommended-field",
+  severity: "warning",
+  description: "A JSON-LD node lacks a field that makes its type more useful to search and answer engines. The field lists per type are configurable.",
+  options: { recommended: DEFAULT_RECOMMENDED, subtypes: {} },
+  page(page, { options, report }) {
+    for (const block of page.jsonLd) {
+      if (!block.ok) continue;
+      for (const node of block.nodes) reportMissingFields(page, block, node, options.recommended, options.subtypes, report);
     }
   },
 };
@@ -200,4 +223,4 @@ const blogPostArticle = {
   },
 };
 
-export const schemaRules = [invalidJson, pageMissing, missingContext, missingType, requiredField, requiredType, faqContent, blogPostArticle];
+export const schemaRules = [invalidJson, pageMissing, missingContext, missingType, requiredField, recommendedField, requiredType, faqContent, blogPostArticle];
