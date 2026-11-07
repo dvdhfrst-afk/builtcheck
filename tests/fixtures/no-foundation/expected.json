@@ -1,0 +1,10 @@
+{
+  "suppressed": 0,
+  "findings": [
+    {"rule": "foundation/robots-missing", "file": "robots.txt", "line": null},
+    {"rule": "foundation/llms-txt-missing", "file": "llms.txt", "line": null},
+    {"rule": "foundation/sitemap-missing", "file": "sitemap.xml", "line": null},
+    {"rule": "foundation/social-image-missing", "file": "og-default.png", "line": null},
+    {"rule": "foundation/page-social-image", "file": "index.html", "line": null}
+  ]
+}

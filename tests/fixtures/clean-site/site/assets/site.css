@@ -1,0 +1,16 @@
+/* Traps: every declaration here looks suspicious to a naive scanner and is fine. */
+@font-face{font-family:"Body Sans";src:url(fonts/body.woff2) format("woff2"),url("data:font/woff2;base64,AAAA;BBBB") format("woff2")}
+:root{--tw-ring-offset-color:#fff;--ink:oklch(0.25 0.01 250);--paper:oklch(0.98 0.01 250)}
+body{font-family:"Body Sans",Inter,Roboto,sans-serif;color:var(--ink);background:var(--paper)}
+pre{font-family:ui-monospace,Menlo,"Roboto Mono",monospace}
+.stack{font-family:system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif}
+.nowrap{white-space:nowrap}
+.logo{background:url(../assets/logo.svg) no-repeat}
+.shadow{box-shadow:0 1px 2px rgba(0,0,0,.2);text-shadow:0 0 1px rgb(255 255 255 / 40%)}
+.mask{mask-image:linear-gradient(#000,transparent);-webkit-mask-image:linear-gradient(#000,transparent)}
+.note::before{content:"#000 white black"}
+.g{display:grid;grid-template-columns:repeat(12,1fr);gap:40px}
+.two{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+@media (max-width:767px){.g{grid-template-columns:1fr}}
+@media print{body{color:#000;background:#fff}}
+@media (forced-colors:active){.logo{color:white}}

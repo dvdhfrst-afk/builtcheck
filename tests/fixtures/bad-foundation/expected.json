@@ -1,0 +1,17 @@
+{
+  "suppressed": 0,
+  "findings": [
+    {"rule": "foundation/robots-blocks-crawler", "file": "robots.txt", "line": 2},
+    {"rule": "foundation/robots-blocks-crawler", "file": "robots.txt", "line": 6},
+    {"rule": "foundation/robots-blocks-crawler", "file": "robots.txt", "line": 6},
+    {"rule": "foundation/robots-sitemap", "file": "robots.txt", "line": 11},
+    {"rule": "foundation/llms-txt-invalid", "file": "llms.txt", "line": 1},
+    {"rule": "foundation/sitemap-stale-url", "file": "sitemap.xml", "line": 4},
+    {"rule": "foundation/sitemap-host", "file": "sitemap.xml", "line": 5},
+    {"rule": "foundation/sitemap-noindex-url", "file": "sitemap.xml", "line": 6},
+    {"rule": "foundation/sitemap-missing-page", "file": "extra.html", "line": null},
+    {"rule": "foundation/social-image-size", "file": "og-default.jpg", "line": null},
+    {"rule": "foundation/page-social-image-size", "file": "about/index.html", "line": 6},
+    {"rule": "foundation/page-social-image-broken", "file": "extra.html", "line": 6}
+  ]
+}

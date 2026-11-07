@@ -1,0 +1,8 @@
+# Fernhollow Plumbing
+
+> An invented plumbing business that exists only as a test fixture.
+
+## Pages
+
+- [Services](https://www.example.com/services/): what the business offers
+- [Questions](https://www.example.com/faq/): common questions

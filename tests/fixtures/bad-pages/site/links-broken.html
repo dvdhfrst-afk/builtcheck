@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<title>Links that fail</title>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"Links that fail"}</script>
+</head>
+<body>
+<h1 id="start">Links that fail</h1>
+<a href="/nope/">Gone page</a>
+<a href="relative-nope.html">Gone relative</a>
+<a href="#no-such-id">Missing local anchor</a>
+<a href="links-ok.html#no-such-id">Missing anchor on another page</a>
+<a href="links-ok.html#exists">Fine</a>
+<a href="#">Read more</a>
+<a>Learn more</a>
+<a href="javascript:void(0)">Continue reading</a>
+<a href="#">Menu</a>
+<a href="#" role="button">Open</a>
+<a href="links-broken.html">Read more</a>
+<img src="/img/nope.png" alt="Gone">
+<a href="/LINKS-OK.html">Differs only in case</a>
+<a href="">Empty</a>
+<a href="../../above-root.html">Above the root</a>
+<img srcset="/img/nope-1x.png 1x, /img/nope-2x.png 2x" alt="Gone">
+<link rel="stylesheet" href="/assets/gone.css">
+<a href="/assets/logo.svg">Fine, a file</a>
+<a href="#start">Fine, a real id</a>
+</body>
+</html>

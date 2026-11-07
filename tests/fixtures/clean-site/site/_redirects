@@ -1,0 +1,3 @@
+# Old addresses that the host redirects.
+/old-services /services/ 301
+/archive/* /blog/:splat 301

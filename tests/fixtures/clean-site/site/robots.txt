@@ -1,0 +1,8 @@
+# Every crawler may read the whole site.
+User-agent: *
+Allow: /
+
+User-agent: GPTBot
+Allow: /
+
+Sitemap: https://www.example.com/sitemap.xml

@@ -1,0 +1,93 @@
+{
+  "suppressed": 4,
+  "findings": [
+    {"rule": "schema/invalid-json", "file": "schema-invalid.html", "line": 10},
+    {"rule": "schema/page-missing", "file": "schema-none.html", "line": null},
+
+    {"rule": "schema/required-field", "file": "schema-localbusiness.html", "line": 5},
+    {"rule": "schema/required-field", "file": "schema-localbusiness.html", "line": 5},
+    {"rule": "schema/required-field", "file": "schema-localbusiness.html", "line": 5},
+    {"rule": "schema/required-field", "file": "schema-localbusiness.html", "line": 5},
+    {"rule": "schema/required-field", "file": "schema-localbusiness.html", "line": 5},
+
+    {"rule": "schema/required-field", "file": "schema-graph.html", "line": 5},
+    {"rule": "schema/required-field", "file": "schema-graph.html", "line": 5},
+    {"rule": "schema/required-field", "file": "schema-graph.html", "line": 5},
+    {"rule": "schema/required-field", "file": "schema-graph.html", "line": 5},
+    {"rule": "schema/required-field", "file": "schema-graph.html", "line": 5},
+    {"rule": "schema/required-field", "file": "schema-graph.html", "line": 5},
+    {"rule": "schema/required-field", "file": "schema-graph.html", "line": 5},
+
+    {"rule": "schema/missing-context", "file": "schema-nocontext.html", "line": 5},
+    {"rule": "schema/missing-type", "file": "schema-nocontext.html", "line": 6},
+
+    {"rule": "schema/faq-content", "file": "qa-no-faq.html", "line": 9},
+    {"rule": "schema/faq-content", "file": "qa-details-no-faq.html", "line": 9},
+    {"rule": "schema/blog-post-article", "file": "blog/post-one/index.html", "line": null},
+    {"rule": "schema/blog-post-article", "file": "latest-update.html", "line": null},
+
+    {"rule": "links/broken-internal", "file": "links-broken.html", "line": 9},
+    {"rule": "links/broken-internal", "file": "links-broken.html", "line": 10},
+    {"rule": "links/missing-anchor", "file": "links-broken.html", "line": 11},
+    {"rule": "links/missing-anchor", "file": "links-broken.html", "line": 12},
+    {"rule": "links/generic-no-destination", "file": "links-broken.html", "line": 14},
+    {"rule": "links/generic-no-destination", "file": "links-broken.html", "line": 15},
+    {"rule": "links/generic-no-destination", "file": "links-broken.html", "line": 16},
+    {"rule": "links/placeholder-href", "file": "links-broken.html", "line": 17},
+    {"rule": "links/generic-no-destination", "file": "links-broken.html", "line": 19},
+    {"rule": "links/broken-asset", "file": "links-broken.html", "line": 20},
+    {"rule": "links/broken-internal", "file": "links-broken.html", "line": 21},
+    {"rule": "links/placeholder-href", "file": "links-broken.html", "line": 22},
+    {"rule": "links/broken-internal", "file": "links-broken.html", "line": 23},
+    {"rule": "links/broken-asset", "file": "links-broken.html", "line": 24},
+    {"rule": "links/broken-asset", "file": "links-broken.html", "line": 24},
+    {"rule": "links/broken-asset", "file": "links-broken.html", "line": 25},
+
+    {"rule": "copy/em-dash", "file": "copy-dashes.html", "line": 9},
+    {"rule": "copy/em-dash", "file": "copy-dashes.html", "line": 10},
+    {"rule": "copy/em-dash", "file": "copy-dashes.html", "line": 11},
+    {"rule": "copy/double-hyphen", "file": "copy-dashes.html", "line": 12},
+    {"rule": "copy/double-hyphen", "file": "copy-dashes.html", "line": 13},
+    {"rule": "copy/em-dash", "file": "copy-title.html", "line": 4},
+    {"rule": "copy/em-dash", "file": "em-dash-literal.html", "line": 9},
+
+    {"rule": "copy/duplicate-heading", "file": "copy-duplicates.html", "line": 11},
+    {"rule": "copy/duplicate-subhead", "file": "copy-duplicates.html", "line": 14},
+    {"rule": "copy/duplicate-heading", "file": "copy-duplicates.html", "line": 17},
+
+    {"rule": "copy/placeholder-text", "file": "copy-placeholder.html", "line": 5},
+    {"rule": "copy/placeholder-text", "file": "copy-placeholder.html", "line": 10},
+    {"rule": "copy/placeholder-text", "file": "copy-placeholder.html", "line": 11},
+    {"rule": "copy/placeholder-text", "file": "copy-placeholder.html", "line": 12},
+    {"rule": "copy/placeholder-text", "file": "copy-placeholder.html", "line": 13},
+    {"rule": "copy/placeholder-text", "file": "copy-placeholder.html", "line": 14},
+    {"rule": "copy/placeholder-text", "file": "copy-placeholder.html", "line": 15},
+    {"rule": "copy/placeholder-text", "file": "copy-placeholder.html", "line": 16},
+    {"rule": "copy/placeholder-text", "file": "copy-placeholder.html", "line": 17},
+
+    {"rule": "style/pure-color", "file": "style-colors.html", "line": 7},
+    {"rule": "style/pure-color", "file": "style-colors.html", "line": 8},
+    {"rule": "style/pure-color", "file": "style-colors.html", "line": 9},
+    {"rule": "style/pure-color", "file": "style-colors.html", "line": 10},
+    {"rule": "style/pure-color", "file": "style-colors.html", "line": 11},
+    {"rule": "style/banned-font", "file": "style-colors.html", "line": 15},
+    {"rule": "style/banned-font", "file": "style-colors.html", "line": 16},
+    {"rule": "style/pure-color", "file": "style-colors.html", "line": 22},
+    {"rule": "style/banned-font", "file": "style-colors.html", "line": 23},
+
+    {"rule": "style/pure-color", "file": "assets/bad.css", "line": 1},
+    {"rule": "style/banned-font", "file": "assets/bad.css", "line": 2},
+    {"rule": "links/broken-asset", "file": "assets/bad.css", "line": 2},
+    {"rule": "style/pure-color", "file": "assets/bad.css", "line": 3},
+    {"rule": "style/phone-overflow", "file": "assets/bad.css", "line": 4},
+
+    {"rule": "style/phone-overflow", "file": "style-layout.html", "line": 9},
+    {"rule": "style/phone-overflow", "file": "style-layout.html", "line": 12},
+    {"rule": "style/phone-overflow", "file": "style-layout.html", "line": 13},
+
+    {"rule": "copy/em-dash", "file": "ignored.html", "line": 14},
+
+    {"rule": "links/broken-internal", "file": "malformed.html", "line": 10},
+    {"rule": "copy/em-dash", "file": "malformed.html", "line": 14}
+  ]
+}

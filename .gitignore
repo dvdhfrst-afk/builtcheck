@@ -1,0 +1,14 @@
+# Dependencies and tool output
+node_modules/
+coverage/
+*.log
+
+# Reports written by builtcheck
+builtcheck-report.html
+builtcheck-report.json
+
+# Editors and operating systems
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -1,0 +1,8 @@
+.x{color:#000000}
+@font-face{font-family:"Helvetica";src:url(/assets/missing.woff2)}
+.y{--brand:#ffffffff;color:var(--brand)}
+.z{display:grid;grid-template-columns:repeat(12,1fr);gap:40px}
+.ok{display:grid;grid-template-columns:repeat(12,1fr);gap:40px}
+@media (max-width:640px){.ok{grid-template-columns:1fr}}
+/* builtcheck-ignore-next-line style/pure-color */
+.ignored{color:#000}
