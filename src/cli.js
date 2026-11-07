@@ -11,6 +11,7 @@ import { formatJson } from "./report/json.js";
 import { printable } from "./report/printable.js";
 import { formatSarif } from "./report/sarif.js";
 import { formatText } from "./report/text.js";
+import { TASTE_RULES } from "./rules/taste.js";
 import { allRules } from "./rules/index.js";
 
 const DEFAULT_CONFIG_FILE = "builtcheck.config.json";
@@ -125,10 +126,7 @@ function starterConfig(options) {
     site: options["site-url"] ? { url: options["site-url"] } : {},
     ignore: [],
     rules: {
-      "copy/em-dash": "warning",
-      "copy/double-hyphen": "warning",
-      "style/pure-color": "warning",
-      "style/banned-font": "warning",
+      ...Object.fromEntries(TASTE_RULES.map((rule) => [rule, "warning"])),
     },
   };
   return `${JSON.stringify(starter, null, 2)}\n`;

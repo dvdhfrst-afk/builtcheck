@@ -1,6 +1,7 @@
 // The readable terminal report. Findings group by file. A finding repeated across many files,
 // which usually means one layout or stylesheet problem, prints once with a count.
 
+import { TASTE_RULES } from "../rules/taste.js";
 import { printable } from "./printable.js";
 
 const COLLAPSE_AT = 4;
@@ -114,6 +115,10 @@ export function formatText(result, { color = false, showAll = false, quiet = fal
     const parts = [paint(errors > 0 ? "red" : "dim", plural(errors, "error")), paint(warnings > 0 ? "yellow" : "dim", plural(warnings, "warning"))];
     if (suppressed > 0) parts.push(`${suppressed} ignored by inline comments`);
     lines.push(`${parts.join(", ")} in ${scope}.`);
+  }
+  const taste = TASTE_RULES.filter((rule) => shown.some((finding) => finding.rule === rule && finding.severity === "warning"));
+  if (taste.length > 0) {
+    lines.push(paint("dim", `${taste.join(", ")}: style preferences, not faults. To leave them out: --skip ${taste.join(",")}`));
   }
   return `${lines.join("\n")}\n`;
 }

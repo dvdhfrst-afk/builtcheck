@@ -1,0 +1,16 @@
+body {
+  color: #2b2622;
+  font-family: Georgia, serif;
+}
+
+.hero {
+  display: grid;
+  gap: 16px;
+}
+
+@media (min-width: 768px) {
+  .hero {
+    grid-template-columns: repeat(12, 1fr);
+    gap: 40px;
+  }
+}

@@ -169,7 +169,7 @@ test("the type of a node may be an array, a full URL or a prefixed name", () => 
     const found = findingsFor({ "index.html": page("x", ld({ ...context, "@type": type, name: "N" })) }, "schema/required-field");
     assert.deepEqual(messages(found), ['Plumber "N" is missing "address"'], JSON.stringify(type));
     const wanted = findingsFor({ "index.html": page("x", ld({ ...context, "@type": type, name: "N" })) }, "schema/recommended-field");
-    assert.equal(wanted.length, 7, JSON.stringify(type));
+    assert.equal(wanted.length, 3, JSON.stringify(type));
   }
 });
 

@@ -5,9 +5,15 @@
   "description": "Audit a built static site folder, offline, for the problems Lighthouse and link checkers do not report.",
   "license": "MIT",
   "type": "module",
+  "keywords": ["static-site", "seo", "sitemap", "structured-data", "json-ld", "link-checker", "audit", "lint", "cli", "offline"],
   "bin": {
     "builtcheck": "bin/builtcheck.js"
   },
+  "exports": {
+    ".": "./src/audit.js",
+    "./package.json": "./package.json"
+  },
+  "files": ["bin", "src", "docs", "examples", "CHANGELOG.md", "CONTRIBUTING.md", "SECURITY.md"],
   "engines": {
     "node": ">=18"
   },

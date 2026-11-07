@@ -133,7 +133,7 @@ const requiredField = {
 };
 
 const DEFAULT_RECOMMENDED = {
-  LocalBusiness: ["geo", "areaServed", "openingHoursSpecification", "aggregateRating", "review", "hasCredential", "makesOffer"],
+  LocalBusiness: ["geo", "areaServed", "openingHoursSpecification"],
   Service: ["provider"],
   Article: ["author", "datePublished"],
 };

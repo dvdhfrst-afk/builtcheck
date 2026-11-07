@@ -334,6 +334,27 @@ test("every rule can be explained", () => {
   for (const rule of allRules) assert.equal(run(["--explain", rule.id]).code, 0, rule.id);
 });
 
+test("help wins over everything else and has no side effects", () => {
+  inTemp((folder) => {
+    for (const args of [["--init", "--help"], ["--explain", "nope", "-h"], ["no-such-folder", "--help"], ["--help", "--nope"]]) {
+      const { code, out } = run(args, folder);
+      assert.equal(code, 0, args.join(" "));
+      assert.match(out, /Usage:/);
+    }
+    assert.deepEqual(readdirSync(folder), []);
+  });
+});
+
+test("an old Node version gets a plain message before anything is loaded", () => {
+  inTemp((folder) => {
+    const preload = join(folder, "old-node.cjs");
+    writeFileSync(preload, 'Object.defineProperty(process, "versions", { value: { node: "16.20.2" } });\n');
+    const result = spawnSync(process.execPath, ["-r", preload, BIN, "--version"], { encoding: "utf8" });
+    assert.equal(result.status, 2);
+    assert.equal(result.stderr, "builtcheck needs Node.js 18 or newer. This is Node.js 16.20.2.\n");
+  });
+});
+
 test("--version and -v print the package version, and -h and --help print usage", () => {
   const { version } = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8"));
   assert.equal(run(["--version"]).out.trim(), version);
@@ -345,7 +366,9 @@ test("every option the help names is accepted", () => {
   const help = run(["--help"]).out;
   const flags = [...help.matchAll(/^ {2}(--[a-z-]+)/gm)].map((match) => match[1]);
   assert.ok(flags.length >= 15);
-  for (const flag of flags) assert.doesNotMatch(run([flag, "x"]).err, /Unknown option/, flag);
+  inTemp((folder) => {
+    for (const flag of flags) assert.doesNotMatch(run([flag, "x"], folder).err, /Unknown option/, flag);
+  });
 });
 
 // ---- Hostile content in the output
@@ -478,6 +501,34 @@ for (const [name, files] of Object.entries(ODD_SITES)) {
     });
   });
 }
+
+test("file names a shell or a terminal would treat specially are reported safely", (context) => {
+  const names = ["line\nbreak.html", "back\\slash.html", "quote\".html", "tab\there.html", "colon:name.html", "star*.html", "dollar$(x).html", `esc${ESCAPE}[31m.html`];
+  withSite({ "index.html": page("x") }, (root) => {
+    const made = [];
+    for (const name of names) {
+      try {
+        writeFileSync(join(root, name), page("<p>TODO</p>"));
+        made.push(name);
+      } catch {
+        // Windows does not allow most of these names.
+      }
+    }
+    if (made.length === 0) {
+      context.skip("this file system allows none of these names");
+      return;
+    }
+    const result = audit(root, {});
+    for (const name of made) assert.ok(result.findings.some((finding) => finding.file === name), name);
+    for (const format of ["text", "github"]) {
+      const { out } = run([".", "--no-config", "--format", format, "--all"], root);
+      assert.ok(!out.includes(ESCAPE), format);
+      assert.ok(!out.includes("line\nbreak"), format);
+    }
+    assert.ok(Array.isArray(JSON.parse(run([".", "--no-config", "--format", "json"], root).out).findings));
+    assert.equal(JSON.parse(run([".", "--no-config", "--format", "sarif"], root).out).version, "2.1.0");
+  });
+});
 
 test("every report format handles non-ASCII names and text", () => {
   withSite({ "caf\u00e9/\u65e5\u672c\u8a9e.html": page('<p>TODO \ud83d\ude00</p><a href="/caf%C3%A9/%E6%97%A5%E6%9C%AC%E8%AA%9E.html">x</a><a href="/caf\u00e9/\u65e5\u672c\u8a9e.html">y</a>') }, (root) => {
