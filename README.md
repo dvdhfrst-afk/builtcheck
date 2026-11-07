@@ -119,7 +119,7 @@ node bin/builtcheck.js --print-config
 | `sitemapPaths` | Where to look for a sitemap when `robots.txt` names none. |
 | `socialImagePaths` | Where to look for the default social image, in order. |
 
-When `url` is not set, the host is taken from the sitemap, `robots.txt` and canonical links. When `basePath` is not set, it is inferred from the sitemap if every URL shares a leading folder that is not in the build and removing it finds the pages. A `_redirects` file in the build counts: a path it redirects is a valid link, with or without the base path in its source.
+When `url` is not set, the host is taken from the sitemap, `robots.txt` and canonical links. When `basePath` is not set, it is inferred from the sitemap if every URL shares a leading folder that is not in the build and removing it finds the pages. With no sitemap, it is inferred the same way from the paths pages link to and load. A `_redirects` file in the build counts: a path it redirects is a valid link, with or without the base path in its source.
 
 ## Ignoring a finding
 

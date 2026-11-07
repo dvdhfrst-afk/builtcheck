@@ -4,7 +4,8 @@
 
 import { resolveReference } from "./urls.js";
 
-const ERROR_PAGE = /(?:^|\/)(?:404|500|not-found|error)(?:\/index)?\.html?$/i;
+// Error pages, and the empty shells single page applications fall back to.
+const ERROR_PAGE = /(?:^|\/)(?:404|500|200|fallback|_?not-found|_?error)(?:\/index)?\.html?$/i;
 const VERIFICATION_PAGE = /(?:^|\/)(?:google[0-9a-f]+|yandex_[0-9a-f]+|BingSiteAuth)\.html?$/i;
 
 export function isErrorPage(page) {

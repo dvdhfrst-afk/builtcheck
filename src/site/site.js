@@ -6,6 +6,7 @@
 import { readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { join, sep } from "node:path";
 import { Page } from "../html/page.js";
+import { getAttr } from "../html/tree.js";
 import { nextRuleEnd, scanCss } from "../css/scanner.js";
 import { PageStyles } from "../css/cascade.js";
 import { parseSelectorList, resolveNesting } from "../css/selectors.js";
@@ -21,6 +22,7 @@ import { readImageSize } from "./images.js";
 
 const SKIPPED_DIRECTORIES = new Set([".git", "node_modules"]);
 const NO_SUPPRESSIONS = new Suppressions();
+const MAX_SAMPLED_PATHS = 2000;
 const PAGE_FILE = /\.html?$/i;
 const STYLESHEET_FILE = /\.css$/i;
 
@@ -198,10 +200,12 @@ export class Site {
     }
 
     this.selectorUse = new SelectorUse(this.stylesheets);
+    this.sampledPaths = [];
     for (const file of this.files) {
       if (!PAGE_FILE.test(file) || this.ignored(file)) continue;
       const page = this.parsePage(file);
       if (!page) continue;
+      this.sampleRootRelativePaths(page);
       const summary = page.summary();
       summary.site = this;
       this.pages.push(summary);
@@ -210,7 +214,8 @@ export class Site {
     }
 
     if (!this.ownHost) this.ownHost = this.inferOwnHost();
-    if (!config.site.basePath && this.basePath === "") this.basePath = this.inferBasePath();
+    if (!config.site.basePath && this.basePath === "") this.basePath = this.inferBasePath() || this.inferBasePathFromReferences();
+    this.sampledPaths = null;
     for (const summary of this.pages) {
       summary.ownUrl = baseUrlForFile(summary.file, this);
       summary.baseUrl = baseUrlForFile(summary.file, this, summary.baseHref);
@@ -330,6 +335,45 @@ export class Site {
     const prefix = `/${split[0].slice(0, common).join("/")}`;
     const found = paths.filter((path) => this.lookup(path.slice(prefix.length) || "/")?.file).length;
     return found * 2 >= paths.length ? prefix : "";
+  }
+
+  // Paths such as /docs/_next/app.js from the first pages, for inferring a base path.
+  sampleRootRelativePaths(page) {
+    if (this.sampledPaths.length >= MAX_SAMPLED_PATHS) return;
+    const attributes = [["a", "href"], ["link", "href"], ["script", "src"], ["img", "src"]];
+    for (const [name, attribute] of attributes) {
+      for (const element of page.all(name)) {
+        const value = getAttr(element, attribute);
+        if (!value || !value.startsWith("/") || value.startsWith("//")) continue;
+        try {
+          this.sampledPaths.push(decodeURIComponent(new URL(value, "http://builtcheck.invalid/").pathname));
+        } catch {
+          // A malformed reference says nothing here, and the link rules report it.
+        }
+      }
+    }
+  }
+
+  // A build with no sitemap can still show its base path: when most root-relative references
+  // miss, all under one folder that is not in the build, and removing that folder finds them.
+  inferBasePathFromReferences() {
+    if (this.sitemaps.entries.length > 0) return "";
+    const missing = this.sampledPaths.filter((path) => this.lookup(path) === null);
+    const counts = new Map();
+    for (const path of missing) {
+      const first = path.split("/")[1];
+      if (first) counts.set(first, (counts.get(first) ?? 0) + 1);
+    }
+    const [best] = [...counts].sort((a, b) => b[1] - a[1]);
+    if (!best || best[1] < 2 || best[1] < missing.length * 0.8) return "";
+    const [folder] = best;
+    const prefix = `/${folder}`;
+    for (const file of this.files) {
+      if (file.startsWith(`${folder}/`)) return "";
+    }
+    const under = missing.filter((path) => path === prefix || path.startsWith(`${prefix}/`));
+    const found = under.filter((path) => this.lookup(path.slice(prefix.length) || "/") !== null).length;
+    return found >= under.length * 0.8 ? prefix : "";
   }
 
   isBuiltPath(url) {
