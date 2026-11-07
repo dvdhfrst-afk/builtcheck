@@ -559,6 +559,8 @@ const ODD_SITES = {
   "an unclosed sitemap location flood": { "sitemap.xml": `<urlset>${R(100000, "<loc>")}`, "index.html": page("x") },
   "sitemap and robots paths that leave the folder": { "sitemap.xml": "<sitemapindex><sitemap><loc>https://www.example.com/../../../etc/passwd</loc></sitemap><sitemap><loc>file:///etc/passwd</loc></sitemap></sitemapindex>", "robots.txt": "User-agent: *\nSitemap: ../../../etc/passwd\n", "index.html": page("x") },
   "a flood of redirect wildcards": { _redirects: R(50000, "/a* /b\n"), "index.html": page(R(200, '<a href="/nope">x</a>')) },
+  "a robots.txt line of wildcards": { "robots.txt": `User-agent: *\nDisallow: ${R(5000, "*a")}\nAllow: /${"a".repeat(100000)}$\n`, "index.html": page("x") },
+  "a very long redirect source": { _redirects: `/${"a".repeat(2000000)} /b\n/${":a/".repeat(100000)} /b\n`, "index.html": page('<a href="/nope">x</a>') },
   "truncated images": { "og-default.png": Buffer.from([0x89, 0x50, 0x4e, 0x47]), "og-default.jpg": Buffer.concat([Buffer.from([0xff, 0xd8]), Buffer.alloc(100000, 0xff)]), "index.html": page("x") },
   "malformed URLs": { "index.html": page('<a href="http://[bad">a</a><a href="%">b</a><a href="/%zz">c</a><a href="\\\\server\\share">d</a><a href="/\ud800">e</a>') },
   "names that are folders": { "x.html/inner.txt": "t", "x.css/inner.txt": "t", "robots.txt/inner.txt": "t", "sitemap.xml/inner.txt": "t", "llms.txt/inner.txt": "t", "og-default.png/inner.txt": "t", "index.html": page("x") },

@@ -34,12 +34,22 @@ export function parseRobots(text) {
   return { groups, sitemaps };
 }
 
-function pathPattern(path) {
-  const anchored = path.endsWith("$");
-  const body = (anchored ? path.slice(0, -1) : path)
-    .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
-    .replace(/\*/g, ".*");
-  return new RegExp(`^${body}${anchored ? "$" : ""}`);
+// Does a robots.txt path pattern match? "*" stands for any text and a final "$" ties it to the end.
+// Done by hand because a regular expression from a hostile line could be enormous or very slow.
+function pathMatches(pattern, path) {
+  const anchored = pattern.endsWith("$");
+  const pieces = (anchored ? pattern.slice(0, -1) : pattern).split("*");
+  if (!path.startsWith(pieces[0])) return false;
+  let position = pieces[0].length;
+  for (let index = 1; index < pieces.length; index += 1) {
+    if (anchored && index === pieces.length - 1) {
+      return path.length - pieces[index].length >= position && path.endsWith(pieces[index]);
+    }
+    const found = path.indexOf(pieces[index], position);
+    if (found === -1) return false;
+    position = found + pieces[index].length;
+  }
+  return !anchored || position === path.length;
 }
 
 // True when a group names this crawler itself, not through "*".
@@ -58,7 +68,7 @@ export function checkAccess(robots, crawler, path) {
   let best = null;
   for (const group of groups) {
     for (const rule of group.rules) {
-      if (!pathPattern(rule.path).test(path)) continue;
+      if (!pathMatches(rule.path, path)) continue;
       const better =
         best === null ||
         rule.path.length > best.path.length ||

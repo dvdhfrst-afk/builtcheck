@@ -33,13 +33,16 @@ function sourcePattern(source) {
   return new RegExp(`^${joined}${splat ? "(?:/.*)?" : "/?"}$`);
 }
 
+const MAX_SOURCE_LENGTH = 4096;
+
 export function parseRedirects(text) {
   const rules = [];
   text.split("\n").forEach((rawLine, index) => {
     const line = rawLine.trim();
     if (line === "" || line.startsWith("#")) return;
     const [source, target] = line.split(/\s+/);
-    if (!source || !target || !source.startsWith("/")) return;
+    // No real redirect source is this long, and it could not compile to a regular expression.
+    if (!source || !target || !source.startsWith("/") || source.length > MAX_SOURCE_LENGTH) return;
     rules.push({ source, target, line: index + 1, pattern: sourcePattern(source) });
   });
   return rules;
