@@ -8,7 +8,9 @@ import { allRules } from "../rules/index.js";
 
 export const summary = "List the built-in config presets, or print one resolved";
 
-export const usage = `Usage:
+export const usage = `builtcheck presets: list the built-in config presets, or print one as the config it resolves to.
+
+Usage:
   builtcheck presets            List the built-in presets
   builtcheck presets <name>     Print a preset as the full config it resolves to
 

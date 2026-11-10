@@ -12,3 +12,6 @@ builtcheck-report.json
 Thumbs.db
 .idea/
 .vscode/
+
+# The results store
+.builtcheck/

@@ -417,7 +417,8 @@ test("every command has its own help, and the main help lists them", () => {
       const result = cli([name, flag]);
       assert.equal(result.code, 0, `${name} ${flag}`);
       assert.ok(result.out.startsWith(`builtcheck ${name}: `), `${name} ${flag}`);
-      assert.match(result.out, /--store <folder>/);
+      // Every command that reads saved runs takes the store folder.
+      if (name !== "presets") assert.match(result.out, /--store <folder>/);
     }
   }
   assert.match(help, /--label <text>/);
