@@ -616,16 +616,38 @@ test("links that try to leave the site folder resolve to nothing and read nothin
   });
 });
 
-test("the source reaches no network and starts no processes", () => {
+// The one exception is builtcheck serve: src/server/ may import node:http to listen on a local
+// port, and run an audit in a worker thread. The modules under src/server/web/ run in the browser,
+// where they fetch from the server that served them, and nowhere else.
+test("the source reaches no network and starts no processes, except the local server", () => {
   const files = execFileSync(process.execPath, ["-e", `
     const { readdirSync } = require("node:fs");
     const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(dir + "/" + e.name) : [dir + "/" + e.name]);
     console.log(walk("src").concat(walk("bin")).join("\\n"));
   `], { cwd: REPO_ROOT, encoding: "utf8" }).trim().split("\n");
+  let servers = 0;
   for (const file of files) {
     const text = readFileSync(join(REPO_ROOT, file), "utf8");
-    assert.doesNotMatch(text, /from "(?:node:)?(?:net|http|https|http2|dgram|tls|dns|child_process|cluster|vm)"/, file);
-    assert.doesNotMatch(text, /\bfetch\(|\beval\(|new Function\(/, file);
+    const server = file.startsWith("src/server/");
+    assert.doesNotMatch(text, /from "(?:node:)?(?:net|https|http2|dgram|tls|dns|child_process|cluster|vm)"/, file);
+    if (!server) assert.doesNotMatch(text, /from "(?:node:)?(?:http|worker_threads)"/, file);
+    if (/from "(?:node:)?http"/.test(text)) {
+      assert.match(text, /from "node:http"/, file);
+      servers += 1;
+    }
+    if (!file.startsWith("src/server/web/")) assert.doesNotMatch(text, /\bfetch\(/, file);
+    assert.doesNotMatch(text, /\beval\(|new Function\(/, file);
+  }
+  assert.equal(servers, 1, "only the server module imports node:http");
+});
+
+test("the browser modules fetch only paths on their own server", () => {
+  const folder = join(REPO_ROOT, "src", "server", "web");
+  for (const name of readdirSync(folder).filter((entry) => entry.endsWith(".js"))) {
+    const text = readFileSync(join(folder, name), "utf8");
+    assert.doesNotMatch(text, /https?:\/\/(?!www\.w3\.org\/2000\/svg)/, name);
+    for (const call of text.matchAll(/\bfetch\(([^,)]+)/g)) assert.equal(call[1], "path", `${name}: fetch(${call[1]})`);
+    for (const call of text.matchAll(/\bapi\(([^,)]+)/g)) assert.match(call[1], /^(?:"\/api[/"]|`\/api[/`]|apiPath\(|path$)/, `${name}: api(${call[1]})`);
   }
 });
 
