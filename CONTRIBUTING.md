@@ -14,7 +14,7 @@ A false alarm is the most useful report there is. Include the smallest HTML or C
    npm test
    ```
 
-2. Add a test that fails without your change. Rule tests live in `tests/rules.test.js`, and failure handling in `tests/failure.test.js`. A fixture site's `expected.json` is written by hand, not generated from the output.
+2. Add a test that fails without your change. Rule tests live in `tests/rules.test.js`, and failure handling in `tests/failure.test.js`. The results store and the web page have their own test files in `tests/`. A fixture site's `expected.json` is written by hand, not generated from the output.
 3. Before you finish, run the full check, which also packs and installs the package:
 
    ```bash
@@ -23,7 +23,7 @@ A false alarm is the most useful report there is. Include the smallest HTML or C
 
 ## Adding a rule
 
-A rule is a plain object in `src/rules/`, listed in `src/rules/index.js`. It needs an `id`, a `severity`, a `description`, default `options`, and one or more of `page`, `stylesheet` and `site`. Document it in `docs/rules.md`; a test checks that you did.
+A rule is a plain object in a file under `src/rules/`, listed in `src/rules/index.js`. It needs an `id`, a `severity`, a `description`, default `options`, and one or more of `page`, `stylesheet` and `site`. Document it, with its options, in the page for its group under `docs/rules/` (for example `docs/rules/links.md`); a test checks that you did. A new group also needs a row in the table in `docs/rules.md`.
 
 - **Error or warning?** An error means definitely broken or missing. If a reasonable site could do this on purpose, it is a warning.
 - **Stay quiet when unsure.** A rule that cannot be sure it has found a problem should say nothing. One false alarm costs more trust than one missed finding.

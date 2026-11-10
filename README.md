@@ -135,15 +135,21 @@ Exit code 2 never means your site passed. A folder with no pages is exit code 2 
 
 ## What it checks
 
-The rules come in five groups. [docs/rules.md](docs/rules.md) lists every rule, its default severity and its options. To list them from the command line:
+The rules come in eleven groups, 129 rules in all. [docs/rules.md](docs/rules.md) lists the groups, and each has a page under [docs/rules/](docs/rules/) with its rules, default severities and options. To list every rule from the command line:
 
 ```bash
 node bin/builtcheck.js --list-rules
 ```
 
 - **Foundation:** `robots.txt` exists and does not block the crawlers you care about, `llms.txt` exists and has a title, the sitemap matches the built pages in both directions, and the default social image is exactly the configured size (read from PNG and JPEG file headers). The default crawler list is ten artificial intelligence crawlers; change it to anything.
-- **Structured data:** every JSON-LD (JavaScript Object Notation for Linked Data) block parses, each page has one, each node has the fields its type requires, question and answer pages carry `FAQPage`, and blog posts carry `Article`. Types and their field lists are defaults you can replace.
+- **Page metadata:** each page's title, description, canonical URL, top heading, viewport, character encoding, icons and share card.
+- **Languages and alternate versions:** `lang` values, and `hreflang` annotations in pages and the sitemap that must agree with each other.
+- **Structured data:** every JSON-LD (JavaScript Object Notation for Linked Data) block parses, each page has one, each node has the fields its type requires, question and answer pages carry `FAQPage`, and blog posts carry `Article`. The checks go into nested nodes and values, not only field names. Types and their field lists are defaults you can replace.
 - **Links:** internal links, in-page anchors and referenced files resolve to files and ids that exist in the build. "Read more" style links with no real destination are reported.
+- **Accessibility:** names, alt text, ARIA (Accessible Rich Internet Applications) use, focus, headings, landmarks, media and forms, as far as a static file can show them. It does not check color contrast.
+- **Assets:** the weight of published files, image sizes, render-blocking scripts, font loading and insecure loads.
+- **Feeds:** RSS (Really Simple Syndication) 2.0 and Atom feeds that pages announce or that sit at common paths.
+- **Web app manifest:** the manifest a page links, including its icons, `start_url` and `scope`.
 - **Copy:** em dashes and `--` in visible text (never in code, attributes or scripts), duplicate headings and subheads, and placeholder text.
 - **Style:** pure black and white in any notation and configured fonts, in CSS (Cascading Style Sheets), `<style>` blocks and inline styles; layouts that overflow at phone width in those and in utility classes. CSS that matches nothing on any page is skipped, so an unused part of a framework is not reported.
 
@@ -161,28 +167,71 @@ node bin/builtcheck.js path/to/dist --max-warnings 0
 
 Text is the default. It collapses a finding repeated across many files, and caps one rule within one file, so a large report stays readable. Use `--all` to list everything, or `--quiet` to list errors only. Run `node bin/builtcheck.js --help` for every option.
 
+`--format` picks one of ten formats: `text`, `json`, `html`, `github`, `sarif`, `markdown`, `junit`, `csv`, `codeclimate` and `checkstyle`. [docs/formats.md](docs/formats.md) says what each is for and shows a sample of each, with CI (continuous integration) examples.
+
 `--output` writes any format to a file. The file is written whole or not at all, so a failed or interrupted run leaves an earlier report as it was. It refuses a path inside the site folder, where the report would be deployed with the site.
 
-A single self-contained HTML report with filters by severity and rule:
+A single self-contained HTML (HyperText Markup Language) report with filters by severity, rule, rule group and file:
 
 ```bash
 node bin/builtcheck.js path/to/dist --format html --output report.html
 ```
 
-JSON (JavaScript Object Notation), for other tools:
+JSON, for other tools:
 
 ```bash
 node bin/builtcheck.js path/to/dist --format json --output report.json
 ```
 
-`github` prints workflow annotations for GitHub Actions, and `sarif` writes SARIF (Static Analysis Results Interchange Format) for code scanning tools. [docs/ci.md](docs/ci.md) has a workflow to copy and the details of the JSON report: which fields you can rely on, and what `complete` and `skipped` mean.
+A Markdown comment for a pull request:
+
+```bash
+node bin/builtcheck.js path/to/dist --format markdown --output report.md
+```
+
+`github` prints workflow annotations for GitHub Actions, and `sarif` writes SARIF (Static Analysis Results Interchange Format) for code scanning tools. `junit`, `csv`, `codeclimate` and `checkstyle` suit test reports, spreadsheets and other CI tools. [docs/ci.md](docs/ci.md) has a workflow to copy and the details of the JSON report: which fields you can rely on, and what `complete` and `skipped` mean.
+
+## Keeping a history of runs
+
+Add `--save` to keep a run in the results store, a folder named `.builtcheck` in the current folder unless you choose another with `--store`. `--label` names the run, such as a release:
+
+```bash
+node bin/builtcheck.js path/to/dist --save --label release-2.4
+```
+
+The report prints as usual, and a line on standard error gives the new run's id. Then:
+
+- `builtcheck history` lists the saved runs, newest first.
+- `builtcheck show <run>` prints a saved run in any report format.
+- `builtcheck compare <run> <run>` shows what changed between two runs: which problems a fix removed and which a later change brought in.
+- `builtcheck import` adds JSON reports you already have, and `builtcheck store` checks, prunes and migrates the store.
+
+```bash
+node bin/builtcheck.js history
+```
+
+Nothing in the store is sent anywhere. [docs/store.md](docs/store.md) has the options, the file layout and the version rules.
+
+## Browsing results in a browser
+
+`builtcheck serve` shows the saved runs in a web page: a chart of errors and warnings over time, each run's findings with filters, a comparison of any two runs, and a description of every rule. The same server has a JSON API (application programming interface) for other tools. Given `--site <folder>`, the page can also start a new audit.
+
+It listens on this computer only by default (`127.0.0.1`, port 7750), so nobody else on your network can reach it. It runs until you press Ctrl+C, which is why it is shown here as text and not as a command to copy and run:
+
+```text
+builtcheck serve
+builtcheck serve --site path/to/dist --port 8080
+```
+
+[docs/web.md](docs/web.md) describes the page, the options and the API.
 
 ## Configuration
 
-builtcheck reads `builtcheck.config.json` from the current folder if there is one, or the file named by `--config`. `--no-config` ignores any config file. See [examples/builtcheck.config.json](examples/builtcheck.config.json) for a realistic one. A mistyped rule or option stops the run with exit code 2 and says what is wrong, rather than being ignored.
+builtcheck reads `builtcheck.config.json` from the current folder if there is one, or the file named by `--config`. `--no-config` ignores any config file. See [examples/builtcheck.config.json](examples/builtcheck.config.json) for a realistic one. It can start from a preset: `"extends": "builtcheck:seo"` takes a built-in set of rules, and a path takes another config file, so several sites can share one. `builtcheck presets` lists the presets (`recommended`, `strict`, `seo`, `accessibility` and `minimal`). [docs/configuration.md](docs/configuration.md) has the details. A mistyped rule or option stops the run with exit code 2 and says what is wrong, rather than being ignored.
 
 ```json
 {
+  "extends": "builtcheck:seo",
   "site": {
     "url": "https://www.example.com",
     "basePath": "/docs",
@@ -197,6 +246,8 @@ builtcheck reads `builtcheck.config.json` from the current folder if there is on
   }
 }
 ```
+
+**`extends`** names presets or config files to start from. What the file itself sets wins over what it extends. The rules for combining them are in [docs/configuration.md](docs/configuration.md), which also covers the `store` setting.
 
 **`rules`** maps a rule id, a group such as `"copy/*"`, or `"*"` to a severity (`"error"`, `"warning"` or `"off"`), or a rule id to an object of `severity` and options. An exact rule entry beats a group entry wherever it appears in the file. Setting options on a rule turns it on at its default severity even when a group turned it off. Options you leave out keep their defaults. An object option such as `required` merges by key, so you can change one type's field list and leave the others alone.
 
@@ -305,6 +356,8 @@ These come with reading static files instead of running a browser:
 
 `src/site/` loads a build: pages, stylesheets, sitemaps, `robots.txt`, redirects, image sizes, and how a URL maps to a file. It makes one pass over the pages to learn what the site holds, and a second to run the rules, keeping one parsed page in memory at a time. `src/rules/` holds the rules, and `src/engine/` runs them, applies config and ignore comments, then sorts and removes duplicates. `src/report/` writes the formats.
 
+`src/store/` is the results store: it saves runs as files, lists them and compares two. `src/server/` is the local web server behind `builtcheck serve`, with its page and JSON API. `src/commands/` holds the subcommands (`history`, `show`, `compare`, `import`, `store`, `presets` and `serve`), which `src/cli.js` dispatches to. `src/a11y/`, `src/assets/` and `src/schema/` hold what the accessibility, assets and structured data rules read.
+
 A rule is a plain object with an `id`, a `severity`, a `description`, default `options`, and one or more of `page`, `stylesheet` and `site` functions that call `report()`. To add one, write the object and list it in `src/rules/index.js`, and config, docs checks and reports pick it up.
 
 ## Running the tests
@@ -325,7 +378,13 @@ On Windows, run that from Git Bash, which comes with Git for Windows. Expected f
 
 ## More
 
-[CHANGELOG.md](CHANGELOG.md), [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md).
+- [docs/rules.md](docs/rules.md): every rule group and its rules.
+- [docs/configuration.md](docs/configuration.md): config files, presets and `extends`.
+- [docs/formats.md](docs/formats.md): the report formats.
+- [docs/ci.md](docs/ci.md): CI workflows, exit codes and the JSON report.
+- [docs/store.md](docs/store.md): the results store.
+- [docs/web.md](docs/web.md): the web page and API.
+- [CHANGELOG.md](CHANGELOG.md), [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md).
 
 ## License
 
