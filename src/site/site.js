@@ -368,9 +368,11 @@ export class Site {
     if (this.sitemaps.entries.length > 0) return "";
     const missing = this.sampledPaths.filter((path) => this.lookup(path) === null);
     const counts = new Map();
+    // Only a path that goes deeper than its first segment says anything about a folder: a missing
+    // /rss.xml that many pages link is a missing file, not a base path.
     for (const path of missing) {
-      const first = path.split("/")[1];
-      if (first) counts.set(first, (counts.get(first) ?? 0) + 1);
+      const [, first, ...rest] = path.split("/");
+      if (first && rest.length > 0) counts.set(first, (counts.get(first) ?? 0) + 1);
     }
     const [best] = [...counts].sort((a, b) => b[1] - a[1]);
     if (!best || best[1] < 2 || best[1] < missing.length * 0.8) return "";

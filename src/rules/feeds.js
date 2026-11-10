@@ -7,7 +7,6 @@ import { firstTime, linkedDocuments, servedPath } from "../assets/linked.js";
 import { rfc3339Problem, rfc822Problem } from "../assets/dates.js";
 import { childElements, firstChild, xmlBase } from "../assets/xml.js";
 import { resolveReference } from "../site/urls.js";
-import { manifestRules } from "./manifest.js";
 
 // A rule over every feed in the build. `check(feed, context, linked)` runs once per feed, where
 // `linked` says a page announced it, so it must be a feed. A file at a common path that does not
@@ -228,4 +227,4 @@ const feedSelfLink = feedRule({
   },
 });
 
-export const feedRules = [feedMissing, feedInvalid, feedRequiredField, feedItemLink, feedDate, feedSelfLink, ...manifestRules];
+export const feedRules = [feedMissing, feedInvalid, feedRequiredField, feedItemLink, feedDate, feedSelfLink];

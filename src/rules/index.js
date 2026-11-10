@@ -7,6 +7,7 @@ import { feedRules } from "./feeds.js";
 import { foundationRules } from "./foundation.js";
 import { i18nRules } from "./i18n.js";
 import { linkRules } from "./links.js";
+import { manifestRules } from "./manifest.js";
 import { metaRules } from "./meta.js";
 import { schemaRules } from "./schema.js";
 import { styleRules } from "./style.js";
@@ -20,6 +21,7 @@ export const allRules = [
   ...a11yRules,
   ...assetRules,
   ...feedRules,
+  ...manifestRules,
   ...copyRules,
   ...styleRules,
 ];
