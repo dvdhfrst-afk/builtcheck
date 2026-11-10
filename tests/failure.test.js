@@ -409,7 +409,7 @@ test("--init writes a config that works and never replaces one", () => {
 test("exit codes follow the table in the README", () => {
   const clean = { "index.html": page("x") };
   withSite(clean, (root) => {
-    const off = JSON.stringify({ rules: { "foundation/*": "off", "schema/*": "off" } });
+    const off = JSON.stringify({ rules: { "foundation/*": "off", "schema/*": "off", "meta/*": "off" } });
     writeFileSync(join(root, "..", `c${process.pid}.json`), off);
     const config = join(root, "..", `c${process.pid}.json`);
     try {

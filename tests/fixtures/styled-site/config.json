@@ -1,1 +1,1 @@
-{ "rules": { "foundation/*": "off" } }
+{"rules": {"foundation/*": "off", "meta/*": "off", "i18n/*": "off", "a11y/*": "off", "assets/*": "off", "feeds/*": "off", "manifest/*": "off"}}

@@ -139,7 +139,7 @@ When the audit left files out, one more suite, `audit`, holds a test case listin
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="builtcheck" tests="39" failures="4" errors="0">
+<testsuites name="builtcheck" tests="129" failures="4" errors="0">
   <testsuite name="links" tests="6" failures="2" errors="0" skipped="0">
     <testcase name="links/broken-internal" classname="builtcheck.links">
       <failure type="error" message="2 errors">blog/first-loaf/index.html:14:1  error  Link /blog/ does not resolve to any file in the build

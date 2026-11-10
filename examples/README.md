@@ -11,7 +11,7 @@ node bin/builtcheck.js examples/before --no-config
 The run exits with code 1 and ends with:
 
 ```text
-15 errors, 14 warnings in 3 pages, 1 stylesheet.
+15 errors, 23 warnings in 3 pages, 1 stylesheet.
 copy/double-hyphen, style/pure-color, style/banned-font: style preferences, not faults. To leave them out: --skip copy/double-hyphen,style/pure-color,style/banned-font
 ```
 
@@ -29,6 +29,8 @@ The kinds of problem it finds, and what fixing each one took in `after/`:
 | "Read more" goes nowhere | `links/generic-no-destination` | Gave it a destination |
 | Lorem ipsum in a description, and "Your text here." on a page | `copy/placeholder-text` | Wrote the text |
 | A grid with 12 columns and 40 pixel gaps at every width | `style/phone-overflow` | Moved it under a `min-width` media query |
+| Pages lack a description, a viewport tag, Open Graph tags and a favicon | `meta/description-missing`, `meta/viewport-missing`, `meta/og-missing`, `meta/favicon-missing` | Added them to each page's head |
+| An image has no width and height, so the page shifts as it loads | `assets/img-missing-dimensions` | Gave it its size |
 | Pure black, and Inter as the first font | `style/pure-color`, `style/banned-font` | Style preferences: changed here, but yours to decide |
 
 To see the report as a page instead, write it outside the site folder:

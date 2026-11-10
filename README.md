@@ -74,7 +74,7 @@ sitemap.xml
 styles.css
   8:3      error    12 grid columns need 440px for gaps alone, wider than a 390px phone  style/phone-overflow
 
-15 errors, 14 warnings in 3 pages, 1 stylesheet.
+15 errors, 23 warnings in 3 pages, 1 stylesheet.
 ```
 
 [examples/README.md](examples/README.md) walks through that site and a fixed copy of it, which comes back clean.

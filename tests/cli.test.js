@@ -211,7 +211,7 @@ test("the rule set is well formed", () => {
   const ids = allRules.map((rule) => rule.id);
   assert.equal(new Set(ids).size, ids.length);
   for (const rule of allRules) {
-    assert.match(rule.id, /^(foundation|schema|links|copy|style)\/[a-z-]+$/);
+    assert.match(rule.id, /^(foundation|meta|i18n|schema|links|a11y|assets|feeds|manifest|copy|style)\/[a-z0-9-]+$/);
     assert.ok(["error", "warning"].includes(rule.severity), rule.id);
     assert.ok(rule.description.length > 10, rule.id);
     assert.ok(rule.page || rule.stylesheet || rule.site, rule.id);
