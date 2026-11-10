@@ -278,7 +278,7 @@ export function render(result, format, options, io) {
 }
 
 // `io` holds stdout, stderr and whether stdout is a color terminal, so tests can run this directly.
-export { UsageError, plainError, writeReport, requireFolder, isSameOrInside, reachedPath };
+export { UsageError, plainError, writeReport, requireFolder, isSameOrInside, reachedPath, projectFolderMessage };
 
 // Returns an exit code, or for a long-running command such as a server, a promise of one.
 export function main(argv, io) {

@@ -2,7 +2,7 @@
 // starting new audits. It runs until Ctrl+C, so run() returns a promise of the exit code.
 
 import { resolve } from "node:path";
-import { loadConfig, requireFolder, UsageError } from "../cli.js";
+import { loadConfig, projectFolderMessage, requireFolder, UsageError } from "../cli.js";
 import { resolveConfig } from "../engine/config.js";
 import { printable } from "../report/printable.js";
 import { allRules } from "../rules/index.js";
@@ -75,6 +75,9 @@ export function run(argv, io) {
   const store = openStore(storeShown);
   if (options.site !== undefined) {
     const root = requireFolder(options.site);
+    // A project folder holding a build gives a wall of false errors, so the page refuses it too.
+    const notABuild = projectFolderMessage(options.site, root, config);
+    if (notABuild) throw new UsageError(notABuild);
     checkSaveTarget({ root, store: { ...(config?.store ?? {}), path: storeShown }, config });
   }
 
