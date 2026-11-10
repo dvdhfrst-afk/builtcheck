@@ -12,10 +12,11 @@ import * as compare from "./compare.js";
 import * as history from "./history.js";
 import * as importReports from "./import.js";
 import * as presets from "./presets.js";
+import * as serve from "./serve.js";
 import * as show from "./show.js";
 import * as store from "./store.js";
 
-export const COMMANDS = { history, show, compare, import: importReports, store, presets };
+export const COMMANDS = { history, show, compare, import: importReports, store, presets, serve };
 
 export function isCommand(word) {
   return Object.hasOwn(COMMANDS, word);
