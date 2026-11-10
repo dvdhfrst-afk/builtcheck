@@ -19,7 +19,7 @@ const NOT_COPY = new Set([
 
 const HIDING_STYLE = /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)\s*(?:;|$|!)/i;
 
-function isHiddenElement(element) {
+export function isHiddenElement(element) {
   if (hasAttr(element, "hidden")) return true;
   const style = getAttr(element, "style");
   return style !== null && HIDING_STYLE.test(style);
