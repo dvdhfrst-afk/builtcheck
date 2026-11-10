@@ -46,9 +46,13 @@ jobs:
 
 Text from the site goes through an escape step in the `github` and `text` formats, so a hostile file name or page cannot start a workflow command or move the terminal cursor.
 
+## Other CI systems
+
+GitLab, Jenkins, Azure Pipelines and others read test and code quality reports rather than annotations. `--format junit` writes a JUnit XML test report, `--format codeclimate` a GitLab code quality report, `--format checkstyle` the Checkstyle XML many CI plugins read, and `--format markdown` a comment for a pull request. [formats.md](formats.md) has a sample of each and a pipeline snippet for where it goes.
+
 ## SARIF
 
-`--format sarif` writes SARIF (Static Analysis Results Interchange Format) version 2.1.0, with one rule entry per rule and paths relative to the site folder as encoded URIs. When the audit is incomplete, the run is marked `executionSuccessful: false`, and each skipped file is listed as a tool notification. The paths are relative to the built folder, not to your sources, so a code scanning service cannot link findings to the source files that produced them. It has not been tried with an upload to any such service.
+`--format sarif` writes SARIF (Static Analysis Results Interchange Format) version 2.1.0, with one rule entry per rule and paths relative to the site folder as encoded URIs. Each rule entry has a full description and a `helpUri` naming its page under `docs/rules/`, relative to this repository. When the audit is incomplete, the run is marked `executionSuccessful: false`, and each skipped file is listed as a tool notification. The paths are relative to the built folder, not to your sources, so a code scanning service cannot link findings to the source files that produced them. It has not been tried with an upload to any such service.
 
 ## The JSON report
 

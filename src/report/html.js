@@ -1,5 +1,7 @@
 // A single self-contained HTML report: no external files, one small inline script for filters.
 
+import { findingsByRule, reportedRules, rulesByGroup } from "./rules.js";
+
 function escapeHtml(text) {
   return String(text)
     .replace(/&/g, "&amp;")
@@ -65,6 +67,11 @@ li .message { overflow-wrap: anywhere; }
 li .rule { grid-column: 3; color: var(--muted); font: 12px ui-monospace, Menlo, Consolas, monospace; }
 li.note { display: block; }
 .clean { padding: 32px 0; color: var(--ok); font-size: 18px; }
+.groups { border-collapse: collapse; margin: 0 0 20px; }
+.groups th, .groups td { text-align: left; padding: 6px 16px 6px 0; border-bottom: 1px solid var(--line); }
+.groups thead th { color: var(--muted); font-weight: 400; font-size: 13px; }
+.groups td { font-variant-numeric: tabular-nums; }
+.groups button { font: inherit; font-weight: 600; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 @media (max-width: 560px) {
   li { grid-template-columns: 4em 1fr; }
   li .message, li .rule { grid-column: 1 / -1; }
@@ -76,13 +83,20 @@ const SCRIPT = `
   var severity = document.getElementById("severity");
   var rule = document.getElementById("rule");
   var search = document.getElementById("search");
+  var file = document.getElementById("file");
+  function ruleShown(id) {
+    if (rule.value === "all") return true;
+    if (rule.value.slice(-2) === "/*") return id.indexOf(rule.value.slice(0, -1)) === 0;
+    return id === rule.value;
+  }
   function apply() {
     var text = search.value.toLowerCase();
     document.querySelectorAll("details").forEach(function (group) {
       var visible = 0;
       group.querySelectorAll("li").forEach(function (item) {
         var show = (severity.value === "all" || item.dataset.severity === severity.value)
-          && (rule.value === "all" || item.dataset.rule === rule.value)
+          && ruleShown(item.dataset.rule || "")
+          && (file.value === "all" || group.dataset.file === file.value)
           && (text === "" || item.textContent.toLowerCase().indexOf(text) !== -1 || group.dataset.file.toLowerCase().indexOf(text) !== -1);
         item.hidden = !show;
         if (show) visible += 1;
@@ -92,7 +106,14 @@ const SCRIPT = `
   }
   severity.addEventListener("change", apply);
   rule.addEventListener("change", apply);
+  file.addEventListener("change", apply);
   search.addEventListener("input", apply);
+  document.querySelectorAll("button[data-group]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      rule.value = button.dataset.group + "/*";
+      apply();
+    });
+  });
 })();
 `;
 
@@ -114,7 +135,18 @@ function skippedSection(skipped) {
   return `<details open data-file="" class="skipped"><summary>Not covered by this audit<small>${skipped.length}</small></summary><ul>${items}</ul></details>\n`;
 }
 
-export function formatHtml(result) {
+// Findings counted by rule group, each group a button that narrows the list to it.
+function groupSummary(groups) {
+  const rows = [...groups].map(([group, rules]) => {
+    const found = rules.flatMap((rule) => rule.findings);
+    const errors = found.filter((finding) => finding.severity === "error").length;
+    return `<tr><th scope="row"><button type="button" data-group="${escapeHtml(group)}">${escapeHtml(group)}</button></th><td>${errors}</td><td>${found.length - errors}</td><td>${rules.length}</td></tr>`;
+  });
+  return `<table class="groups"><thead><tr><th scope="col">Group</th><th scope="col">Errors</th><th scope="col">Warnings</th><th scope="col">Rules</th></tr></thead><tbody>${rows.join("")}</tbody></table>\n`;
+}
+
+// `rules` sets the order of groups and rules; without it they sort by name.
+export function formatHtml(result, rules = []) {
   const { summary, findings } = result;
   const byFile = new Map();
   for (const finding of findings) {
@@ -132,14 +164,26 @@ export function formatHtml(result) {
       );
     })
     .join("\n");
-  const rules = [...new Set(findings.map((finding) => finding.rule))].sort();
-  const ruleOptions = rules.map((rule) => `<option value="${escapeHtml(rule)}">${escapeHtml(rule)}</option>`).join("");
+  const byRule = findingsByRule(findings);
+  const ordered = rules.length > 0 ? reportedRules(result, rules) : [...byRule.keys()].sort().map((id) => ({ id }));
+  const ruleGroups = new Map();
+  for (const [group, members] of rulesByGroup(ordered.filter((rule) => byRule.has(rule.id)))) {
+    ruleGroups.set(group, members.map((rule) => ({ id: rule.id, findings: byRule.get(rule.id) })));
+  }
+  const ruleOptions = [...ruleGroups]
+    .map(([group, members]) => {
+      const options = members.map(({ id }) => `<option value="${escapeHtml(id)}">${escapeHtml(id)}</option>`).join("");
+      return `<optgroup label="${escapeHtml(group)}"><option value="${escapeHtml(group)}/*">All ${escapeHtml(group)} rules</option>${options}</optgroup>`;
+    })
+    .join("");
+  const fileOptions = [...byFile.keys()].map((file) => `<option value="${escapeHtml(file)}">${escapeHtml(file)}</option>`).join("");
   const body =
     findings.length === 0
       ? `<p class="clean">No problems found.</p>`
-      : `<div class="filters">
+      : `${groupSummary(ruleGroups)}<div class="filters">
 <label>Severity <select id="severity"><option value="all">All</option><option value="error">Errors</option><option value="warning">Warnings</option></select></label>
 <label>Rule <select id="rule"><option value="all">All</option>${ruleOptions}</select></label>
+<label>File <select id="file"><option value="all">All</option>${fileOptions}</select></label>
 <label>Search <input id="search" type="search"></label>
 </div>
 ${groups}

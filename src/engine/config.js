@@ -1,6 +1,8 @@
 // Loads and validates configuration, and merges it over the defaults each rule declares.
 
 import { readFileSync } from "node:fs";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { applyPreset, PRESET_NAMES, PRESET_PREFIX, PRESETS } from "./presets.js";
 import { ruleMatches } from "./suppressions.js";
 
 export class ConfigError extends Error {}
@@ -149,30 +151,9 @@ function applySetting(settings, rule, value, where) {
   }
 }
 
-// Combines a user config with rule defaults. Result:
-//   { site, ignore, rules: { [id]: { severity, options } } }
-export function resolveConfig(user, rules, selection = {}) {
-  if (!isPlainObject(user)) throw new ConfigError("Config must be a JSON object");
-  for (const key of Object.keys(user)) {
-    if (!["site", "ignore", "rules", "store"].includes(key)) {
-      throw new ConfigError(`"${key}" is not a config setting. Known settings: site, ignore, rules, store`);
-    }
-  }
-  validateStore(user.store);
-  const site = user.site ?? {};
-  validateSite(site);
-  if (user.ignore !== undefined && !isStringArray(user.ignore)) {
-    throw new ConfigError('"ignore" must be an array of glob strings');
-  }
-  const userRules = user.rules ?? {};
-  if (!isPlainObject(userRules)) throw new ConfigError('"rules" must be an object');
-
-  const resolved = {};
-  for (const rule of rules) {
-    resolved[rule.id] = { severity: rule.severity, options: structuredClone(rule.options ?? {}) };
-  }
-
-  // Groups first, so an exact rule entry wins no matter the order in the file.
+// Applies one config's "rules" over `resolved`. Groups first, so an exact rule entry wins no
+// matter the order in the file.
+function applyRules(resolved, userRules, rules) {
   const entries = Object.entries(userRules);
   // Likewise "*" before named groups, wherever each appears.
   const groups = entries
@@ -194,6 +175,135 @@ export function resolveConfig(user, rules, selection = {}) {
       resolved[key].severity = rule.severity;
     }
     applySetting(resolved[key], rule, value, `rules."${key}"`);
+    validateOptions(rule, resolved[key].options);
+  }
+}
+
+function validateOptions(rule, options) {
+  try {
+    rule.validate?.(options);
+  } catch (error) {
+    throw new ConfigError(`rules."${rule.id}": ${error.message}`);
+  }
+}
+
+const SETTINGS = ["extends", "site", "ignore", "rules", "store"];
+
+// The checks one config makes on its own, before anything it extends is read. Returns what it
+// extends, as a list.
+function validateLayer(user, extended) {
+  if (!isPlainObject(user)) throw new ConfigError("Config must be a JSON object");
+  for (const key of Object.keys(user)) {
+    if (!SETTINGS.includes(key)) {
+      throw new ConfigError(`"${key}" is not a config setting. Known settings: ${SETTINGS.join(", ")}`);
+    }
+  }
+  // Store settings say where this machine keeps its runs, so they belong to the file run with.
+  if (extended && user.store !== undefined) {
+    throw new ConfigError('"store" can only be set in the config file builtcheck runs with, not in one it extends');
+  }
+  validateStore(user.store);
+  validateSite(user.site ?? {});
+  if (user.ignore !== undefined && !isStringArray(user.ignore)) {
+    throw new ConfigError('"ignore" must be an array of glob strings');
+  }
+  if (user.rules !== undefined && !isPlainObject(user.rules)) throw new ConfigError('"rules" must be an object');
+  const list = user.extends === undefined ? [] : typeof user.extends === "string" ? [user.extends] : user.extends;
+  if (!isStringArray(list) || list.some((entry) => entry === "")) {
+    throw new ConfigError('"extends" must be a preset name or a config file path, or a list of them');
+  }
+  return list;
+}
+
+// A file named in a chain: relative to the current folder when it is inside it, else in full.
+function displayPath(path) {
+  const short = relative(process.cwd(), path);
+  return short === "" || isAbsolute(short) || /^\.\.([\\/]|$)/.test(short) ? path : short;
+}
+
+function chainText(chain) {
+  return `extends ${chain.join(" -> ")}`;
+}
+
+// Runs `fn`, naming the extends chain in any config mistake it finds, since the file at fault is
+// then not the one the user ran with.
+function inChain(chain, fn) {
+  if (chain.length === 0) return fn();
+  try {
+    return fn();
+  } catch (error) {
+    if (error instanceof ConfigError) throw new ConfigError(`${chainText(chain)}: ${error.message}`);
+    throw error;
+  }
+}
+
+function closestPreset(name) {
+  let best = null;
+  let bestDistance = Infinity;
+  for (const candidate of PRESET_NAMES) {
+    const distance = editDistance(name, candidate);
+    if (distance < bestDistance) {
+      best = candidate;
+      bestDistance = distance;
+    }
+  }
+  return bestDistance <= 3 ? ` Did you mean "${best}"?` : "";
+}
+
+const fileKey = (path) => (process.platform === "win32" ? path.toLowerCase() : path);
+
+// Lists the configs to apply, in order: what a config extends comes before it, in the order it
+// names them, so later entries win and the config itself wins over all of them. A layer is
+// { config, chain } for a config object or { preset } for a built-in preset. `files` holds the
+// files on the current path, to catch a chain that comes back to a file it passed through.
+function collectLayers(user, chain, files, layers) {
+  const list = inChain(chain, () => validateLayer(user, chain.length > 0));
+  for (const entry of list) {
+    if (entry.startsWith(PRESET_PREFIX)) {
+      if (!Object.hasOwn(PRESETS, entry)) {
+        throw new ConfigError(`${chainText([...chain, entry])}: "${entry}" is not a built-in preset.${closestPreset(entry)} Presets: ${PRESET_NAMES.join(", ")}`);
+      }
+      layers.push({ preset: PRESETS[entry] });
+      continue;
+    }
+    // The reader of a file made its paths absolute; a config built in code means the current folder.
+    const path = resolve(entry);
+    const next = [...chain, displayPath(path)];
+    if (files.includes(fileKey(path))) throw new ConfigError(`${chainText(next)}: the chain comes back to a file it already passed through`);
+    let config;
+    try {
+      config = readConfig(path, displayPath(path));
+    } catch (error) {
+      if (error instanceof ConfigError) throw new ConfigError(`${error.message} (${chainText(next)})`);
+      throw error;
+    }
+    collectLayers(config, next, [...files, fileKey(path)], layers);
+  }
+  layers.push({ config: user, chain });
+  return layers;
+}
+
+// Combines a user config, and every preset and file it extends, with rule defaults. Result:
+//   { site, ignore, store, rules: { [id]: { severity, options } } }
+export function resolveConfig(user, rules, selection = {}) {
+  const layers = collectLayers(user, [], [], []);
+
+  const resolved = {};
+  for (const rule of rules) {
+    resolved[rule.id] = { severity: rule.severity, options: structuredClone(rule.options ?? {}) };
+  }
+  // Site settings replace each other key by key. Ignore patterns add up, since a shared config
+  // leaving out its own drafts does not mean a project wants its drafts audited.
+  let site = {};
+  const ignore = [];
+  for (const layer of layers) {
+    if (layer.preset) {
+      applyPreset(layer.preset, resolved, rules);
+      continue;
+    }
+    inChain(layer.chain, () => applyRules(resolved, layer.config.rules ?? {}, rules));
+    site = { ...site, ...(layer.config.site ?? {}) };
+    for (const pattern of layer.config.ignore ?? []) if (!ignore.includes(pattern)) ignore.push(pattern);
   }
 
   const only = selection.only ?? [];
@@ -207,22 +317,35 @@ export function resolveConfig(user, rules, selection = {}) {
     if ((only.length > 0 && !ruleMatches(only, rule.id)) || ruleMatches(skip, rule.id)) resolved[rule.id].severity = "off";
   }
 
-  for (const rule of rules) {
-    try {
-      rule.validate?.(resolved[rule.id].options);
-    } catch (error) {
-      throw new ConfigError(`rules."${rule.id}": ${error.message}`);
-    }
-  }
+  for (const rule of rules) validateOptions(rule, resolved[rule.id].options);
 
   return {
     site: { ...DEFAULT_SITE, ...site },
-    ignore: user.ignore ?? [],
+    ignore,
+    store: { ...(user.store ?? {}) },
     rules: resolved,
   };
 }
 
+// The resolved config written out as a config file: every default filled in and nothing left to
+// extend, so it reads back as it is. --print-config and `builtcheck presets <name>` print this.
+export function printableConfig(user, rules) {
+  const config = resolveConfig(user, rules);
+  const printed = { site: config.site, ignore: config.ignore, rules: {} };
+  for (const rule of rules) {
+    const { severity, options } = config.rules[rule.id];
+    printed.rules[rule.id] = { severity, ...options };
+  }
+  if (Object.keys(config.store).length > 0) printed.store = config.store;
+  return printed;
+}
+
 export function readConfigFile(path) {
+  return readConfig(path, path);
+}
+
+// `label` is how messages name the file.
+function readConfig(path, label) {
   let text;
   try {
     const buffer = readFileSync(path);
@@ -230,11 +353,21 @@ export function readConfigFile(path) {
     text = buffer[0] === 0xff && buffer[1] === 0xfe ? buffer.toString("utf16le") : buffer.toString("utf8");
   } catch (error) {
     const reason = { ENOENT: "no such file", EISDIR: "that path is a folder", EACCES: "permission denied", EPERM: "permission denied", EBUSY: "the file is locked by another program", ENOTDIR: "part of that path is not a folder" }[error.code];
-    throw new ConfigError(`Cannot read config file ${path}: ${reason ?? error.message}`);
+    throw new ConfigError(`Cannot read config file ${label}: ${reason ?? error.message}`);
   }
+  let config;
   try {
-    return JSON.parse(text.replace(/^\ufeff/, ""));
+    config = JSON.parse(text.replace(/^\ufeff/, ""));
   } catch (error) {
-    throw new ConfigError(`Config file ${path} is not valid JSON: ${error.message}`);
+    throw new ConfigError(`Config file ${label} is not valid JSON: ${error.message}`);
   }
+  // Only the reader knows where the file is, so the files it extends become absolute paths here,
+  // and mean the same wherever the object is passed or copied to.
+  if (isPlainObject(config)) {
+    const folder = dirname(resolve(path));
+    const anchor = (entry) => (typeof entry === "string" && entry !== "" && !entry.startsWith(PRESET_PREFIX) ? resolve(folder, entry) : entry);
+    if (typeof config.extends === "string") config.extends = anchor(config.extends);
+    else if (Array.isArray(config.extends)) config.extends = config.extends.map(anchor);
+  }
+  return config;
 }

@@ -10,3 +10,5 @@ export const COMMANDS = {};
 export function isCommand(word) {
   return Object.hasOwn(COMMANDS, word);
 }
+
+COMMANDS.presets = await import("./presets.js");

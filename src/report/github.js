@@ -3,6 +3,7 @@
 // committed. Text from audited files is escaped so it cannot end the command and start another.
 
 import { printable } from "./printable.js";
+import { plural } from "./rules.js";
 
 function escapeData(text) {
   return text.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
@@ -26,6 +27,6 @@ export function formatGithub(result) {
     lines.push(`::${incomplete ? "error" : "notice"} file=${escapeProperty(printable(file))},title=builtcheck::${escapeData(printable(reason))}`);
   }
   const { errors, warnings, pages } = result.summary;
-  lines.push(`builtcheck: ${errors} errors, ${warnings} warnings in ${pages} pages.`);
+  lines.push(`builtcheck: ${plural(errors, "error")}, ${plural(warnings, "warning")} in ${plural(pages, "page")}.`);
   return `${lines.join("\n")}\n`;
 }
