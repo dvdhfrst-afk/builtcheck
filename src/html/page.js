@@ -7,6 +7,7 @@ import { Suppressions, parseDirective, parseRuleList } from "../engine/suppressi
 import { LineIndex } from "../site/lines.js";
 import { nextRuleEnd, scanCss } from "../css/scanner.js";
 import { isJsonLdScript, parseJsonLdText } from "../schema/jsonld.js";
+import { headSummary } from "../seo/head.js";
 import { matchesSelector, requiredNames, selectorKey } from "../css/selectors.js";
 import { buildTree, classList, getAttr, hasAttr, isHeadingName, textContent, walk } from "./tree.js";
 
@@ -121,6 +122,7 @@ export class Page {
       }
     }
     const base = this.first("base");
+    const head = headSummary(this);
     return {
       file: this.file,
       ids: new Set([...this.ids].map(detached)),
@@ -129,6 +131,13 @@ export class Page {
       canonicalHref: canonical ? detached(getAttr(canonical, "href")) : null,
       baseHref: base ? detached(getAttr(base, "href")) : null,
       socialImages: socialImages.map(detached),
+      // Compared across pages by the meta and i18n rules.
+      document: head.document,
+      title: detached(head.title),
+      description: detached(head.description),
+      lang: detached(head.lang),
+      alternates: head.alternates.map(({ hreflang, href }) => ({ hreflang: detached(hreflang), href: detached(href) })),
+      icons: head.icons.map(detached),
       // Ignore comments are rare, and site-wide rules have to honor them.
       suppressions: this.source.includes("builtcheck-ignore") ? this.suppressions : null,
     };
