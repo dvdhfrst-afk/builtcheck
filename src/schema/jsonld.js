@@ -24,32 +24,40 @@ function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function addNode(object, primary, into, impliedType) {
+function joinPath(path, step) {
+  return path === "" ? step : `${path}.${step}`;
+}
+
+// Each node records where it sits: its parent node, the key it sits under and a path such as
+// "@graph[2].offers[0]", so a message can say which node it means.
+function addNode(object, primary, into, impliedType, parent, key, path) {
   const types = nodeTypes(object);
   if (types.length === 0 && impliedType) types.push(impliedType);
-  into.push({ object, types, primary });
-  for (const [key, value] of Object.entries(object)) {
-    if (key === "@context" || key === "@type" || key === "@id") continue;
-    if (key === "@graph") {
-      for (const member of asArray(value)) {
-        if (isObject(member)) addNode(member, true, into);
+  const node = { object, types, primary, parent, key, path };
+  into.push(node);
+  for (const [childKey, value] of Object.entries(object)) {
+    if (childKey === "@context" || childKey === "@type" || childKey === "@id") continue;
+    const many = Array.isArray(value);
+    asArray(value).forEach((child, index) => {
+      if (!isObject(child)) return;
+      if (childKey === "@graph") {
+        addNode(child, true, into, undefined, null, null, joinPath(path, `@graph[${index}]`));
+        return;
       }
-      continue;
-    }
-    for (const child of asArray(value)) {
-      if (!isObject(child)) continue;
-      const isPrimaryChild = primary && PRIMARY_KEYS.has(key) && nodeTypes(child).length > 0;
-      addNode(child, isPrimaryChild, into, IMPLIED_TYPES.get(key));
-    }
+      const isPrimaryChild = primary && PRIMARY_KEYS.has(childKey) && nodeTypes(child).length > 0;
+      const step = many ? `${childKey}[${index}]` : childKey;
+      addNode(child, isPrimaryChild, into, IMPLIED_TYPES.get(childKey), node, childKey, joinPath(path, step));
+    });
   }
 }
 
-// Every object in a parsed block, with its types and whether it is a primary node.
+// Every object in a parsed block, with its types, whether it is a primary node, and where it sits.
 export function collectNodes(data) {
   const nodes = [];
-  for (const top of asArray(data)) {
-    if (isObject(top)) addNode(top, true, nodes);
-  }
+  const many = Array.isArray(data);
+  asArray(data).forEach((top, index) => {
+    if (isObject(top)) addNode(top, true, nodes, undefined, null, null, many ? `[${index}]` : "");
+  });
   return nodes;
 }
 
@@ -96,6 +104,16 @@ function lookupPath(object, path) {
 // `spec` is a field name, a dotted path, or alternatives joined with "|".
 export function hasField(object, spec) {
   return spec.split("|").some((path) => lookupPath(object, path));
+}
+
+// A property of the object itself, never one inherited from Object.prototype such as "constructor".
+export function ownValue(object, key) {
+  return Object.hasOwn(object, key) ? object[key] : undefined;
+}
+
+// A member with only an @id is a reference to a node defined elsewhere.
+export function isReferenceOnly(object) {
+  return Object.keys(object).every((key) => key === "@id");
 }
 
 export { asArray, isObject };
