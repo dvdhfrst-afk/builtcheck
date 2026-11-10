@@ -11,5 +11,6 @@ Each group has its own page, with a table of its rules and their options.
 | Foundation | `foundation/*` | [foundation](rules/foundation.md) |
 | Structured data | `schema/*` | [schema](rules/schema.md) |
 | Links | `links/*` | [links](rules/links.md) |
+| Accessibility | `a11y/*` | [a11y](rules/a11y.md) |
 | Copy | `copy/*` | [copy](rules/copy.md) |
 | Style | `style/*` | [style](rules/style.md) |
