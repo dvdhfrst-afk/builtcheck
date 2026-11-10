@@ -13,5 +13,8 @@ Each group has its own page, with a table of its rules and their options.
 | Languages and alternate versions | `i18n/*` | [i18n](rules/i18n.md) |
 | Structured data | `schema/*` | [schema](rules/schema.md) |
 | Links | `links/*` | [links](rules/links.md) |
+| Assets | `assets/*` | [assets](rules/assets.md) |
+| Feeds | `feeds/*` | [feeds](rules/feeds.md) |
+| Web app manifest | `manifest/*` | [manifest](rules/manifest.md) |
 | Copy | `copy/*` | [copy](rules/copy.md) |
 | Style | `style/*` | [style](rules/style.md) |
