@@ -14,10 +14,15 @@ process.stdout.on("error", (error) => {
   process.exit(process.exitCode ?? 0);
 });
 
-import("../src/cli.js").then(({ main }) => {
-  process.exitCode = main(process.argv.slice(2), {
-    stdout: (text) => process.stdout.write(text),
-    stderr: (text) => process.stderr.write(text),
-    isTty: process.stdout.isTTY,
+// A long-running command such as a server gives a promise of its exit code.
+import("../src/cli.js")
+  .then(({ main }) =>
+    main(process.argv.slice(2), {
+      stdout: (text) => process.stdout.write(text),
+      stderr: (text) => process.stderr.write(text),
+      isTty: process.stdout.isTTY,
+    }),
+  )
+  .then((code) => {
+    process.exitCode = code;
   });
-});

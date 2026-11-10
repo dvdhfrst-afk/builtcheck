@@ -3,7 +3,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -12,7 +12,17 @@ import { REPO_ROOT } from "./helpers.js";
 
 const BIN = join(REPO_ROOT, "bin", "builtcheck.js");
 const read = (...path) => readFileSync(join(REPO_ROOT, ...path), "utf8");
-const MARKDOWN = ["README.md", "CHANGELOG.md", "CONTRIBUTING.md", "SECURITY.md", "docs/rules.md", "docs/ci.md", "examples/README.md"];
+// Every Markdown file the package carries, wherever it sits under docs/.
+function docsUnder(folder) {
+  return readdirSync(join(REPO_ROOT, ...folder.split("/")), { withFileTypes: true }).flatMap((entry) => {
+    const path = `${folder}/${entry.name}`;
+    if (entry.isDirectory()) return docsUnder(path);
+    return entry.name.endsWith(".md") ? [path] : [];
+  });
+}
+const MARKDOWN = ["README.md", "CHANGELOG.md", "CONTRIBUTING.md", "SECURITY.md", "examples/README.md", ...docsUnder("docs")];
+const GROUPS = [...new Set(allRules.map((rule) => rule.id.split("/")[0]))].join("|");
+const RULE_ID = (wrapped) => new RegExp(wrapped ? `\`((?:${GROUPS})/[a-z0-9-]+)\`` : `\\b((?:${GROUPS})/[a-z0-9-]+)\\b`, "g");
 
 function blocks(text, language) {
   return [...text.matchAll(/^ *```([a-z]*)\n([^]*?)^ *```$/gm)].filter((match) => match[1] === language).map((match) => match[2]);
@@ -65,7 +75,7 @@ test("the example sites come out as their walkthrough says", () => {
   const second = spawnSync(process.execPath, [BIN, "examples/after", "--config", "examples/after.config.json"], { encoding: "utf8", cwd: REPO_ROOT });
   assert.equal(second.status, 0);
   assert.equal(second.stdout, after);
-  for (const match of walkthrough.matchAll(/`((?:foundation|schema|links|copy|style)\/[a-z-]+)`/g)) {
+  for (const match of walkthrough.matchAll(RULE_ID(true))) {
     assert.ok(first.stdout.includes(match[1]), `the walkthrough names ${match[1]}, which the run does not report`);
   }
 });
@@ -82,7 +92,7 @@ test("the JSON sample in the CI guide has the fields of a real report", () => {
 
 test("rule ids named in the README exist", () => {
   const ids = new Set(allRules.map((rule) => rule.id));
-  for (const match of read("README.md").matchAll(/\b((?:foundation|schema|links|copy|style)\/[a-z-]+)\b/g)) {
+  for (const match of read("README.md").matchAll(RULE_ID(false))) {
     assert.ok(ids.has(match[1]), match[1]);
   }
 });

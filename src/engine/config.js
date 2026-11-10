@@ -73,6 +73,17 @@ function validateSite(site) {
   }
 }
 
+// Where saved runs go, and whether every run is saved. The command line can override both.
+function validateStore(store) {
+  if (store === undefined) return;
+  if (!isPlainObject(store)) throw new ConfigError('"store" must be an object');
+  for (const key of Object.keys(store)) {
+    if (!["path", "save"].includes(key)) throw new ConfigError(`store.${key} is not a setting. Known settings: path, save`);
+  }
+  if (store.path !== undefined && (typeof store.path !== "string" || store.path === "")) throw new ConfigError("store.path must be a folder path");
+  if (store.save !== undefined && typeof store.save !== "boolean") throw new ConfigError("store.save must be true or false");
+}
+
 function typeName(value) {
   if (value === null) return "null";
   return Array.isArray(value) ? "array" : typeof value;
@@ -143,10 +154,11 @@ function applySetting(settings, rule, value, where) {
 export function resolveConfig(user, rules, selection = {}) {
   if (!isPlainObject(user)) throw new ConfigError("Config must be a JSON object");
   for (const key of Object.keys(user)) {
-    if (!["site", "ignore", "rules"].includes(key)) {
-      throw new ConfigError(`"${key}" is not a config setting. Known settings: site, ignore, rules`);
+    if (!["site", "ignore", "rules", "store"].includes(key)) {
+      throw new ConfigError(`"${key}" is not a config setting. Known settings: site, ignore, rules, store`);
     }
   }
+  validateStore(user.store);
   const site = user.site ?? {};
   validateSite(site);
   if (user.ignore !== undefined && !isStringArray(user.ignore)) {

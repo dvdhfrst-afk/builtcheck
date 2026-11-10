@@ -5,27 +5,33 @@ import { accessSync, constants, existsSync, mkdirSync, readdirSync, realpathSync
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { audit, version } from "./audit.js";
 import { ConfigError, DEFAULT_SITE, readConfigFile } from "./engine/config.js";
-import { formatGithub } from "./report/github.js";
-import { formatHtml } from "./report/html.js";
-import { formatJson } from "./report/json.js";
+import { COMMANDS, isCommand } from "./commands/index.js";
+import { FORMAT_NAMES, FORMATS, formatList } from "./report/index.js";
 import { printable } from "./report/printable.js";
-import { formatSarif } from "./report/sarif.js";
-import { formatText } from "./report/text.js";
+import { saveRun, StoreError } from "./store/index.js";
 import { TASTE_RULES } from "./rules/taste.js";
 import { allRules } from "./rules/index.js";
 
 const DEFAULT_CONFIG_FILE = "builtcheck.config.json";
-const FORMATS = new Set(["text", "json", "html", "github", "sarif"]);
 
-const HELP = `builtcheck: audit a built static site folder, offline.
+function commandHelp() {
+  const names = Object.keys(COMMANDS);
+  if (names.length === 0) return "";
+  const width = Math.max(...names.map((name) => name.length)) + 2;
+  const lines = names.map((name) => `  builtcheck ${name.padEnd(width)}${COMMANDS[name].summary}`);
+  return `\nCommands:\n${lines.join("\n")}\n\nRun builtcheck <command> --help for the options of a command.\n`;
+}
+
+const help = () => `builtcheck: audit a built static site folder, offline.
 
 Usage:
   builtcheck <folder> [options]
+  builtcheck <command> [options]
   builtcheck --init [--site-url <url>]
   builtcheck --explain <rule>
-
+${commandHelp()}
 Options:
-  --format <name>            text (default), json, html, github or sarif
+  --format <name>            ${formatList()}. Text is the default
   --output <file>            Write the report to a file instead of stdout. Must be outside the site folder
   --config <file>            Config file (default: ${DEFAULT_CONFIG_FILE} in the current folder, if present)
   --no-config                Ignore any config file and use the defaults
@@ -34,6 +40,8 @@ Options:
   --only <rules>             Run only these rules, as ids or groups such as links/*, separated by commas
   --skip <rules>             Do not run these rules
   --max-warnings <n>         Also fail if there are more than n warnings
+  --save                     Save this run in the results store
+  --store <folder>           The results store folder (default: .builtcheck in the current folder)
   --quiet                    In text output, list errors only
   --all                      In text output, list every finding with nothing collapsed
   --no-color                 Plain text output
@@ -52,9 +60,9 @@ Exit codes:
 
 class UsageError extends Error {}
 
-const VALUE_FLAGS = new Set(["format", "output", "config", "site-url", "base-path", "max-warnings", "explain"]);
+const VALUE_FLAGS = new Set(["format", "output", "config", "site-url", "base-path", "max-warnings", "explain", "store"]);
 const LIST_FLAGS = new Set(["only", "skip"]);
-const BOOLEAN_FLAGS = new Set(["no-config", "quiet", "all", "no-color", "list-rules", "print-config", "init", "version", "help"]);
+const BOOLEAN_FLAGS = new Set(["no-config", "quiet", "all", "no-color", "list-rules", "print-config", "init", "version", "help", "save"]);
 
 export function parseArguments(argv) {
   const options = { positional: [] };
@@ -143,7 +151,7 @@ function writeStarterConfig(options, io) {
   io.stdout(`Wrote ${DEFAULT_CONFIG_FILE}. See the README for the settings it can hold.\n`);
 }
 
-function loadConfig(options) {
+export function loadConfig(options) {
   let config = {};
   if (options.config) {
     if (options["no-config"]) throw new UsageError("--config and --no-config cannot be combined");
@@ -267,12 +275,9 @@ function writeReport(path, report, root) {
   }
 }
 
-function render(result, format, options, io) {
-  if (format === "json") return formatJson(result);
-  if (format === "html") return formatHtml(result);
-  if (format === "github") return formatGithub(result);
-  if (format === "sarif") return formatSarif(result, allRules);
-  return formatText(result, {
+export function render(result, format, options, io) {
+  return FORMATS[format].render(result, {
+    rules: allRules,
     color: Boolean(io.isTty) && !options["no-color"] && !options.output && !process.env.NO_COLOR,
     showAll: Boolean(options.all),
     quiet: Boolean(options.quiet),
@@ -280,11 +285,15 @@ function render(result, format, options, io) {
 }
 
 // `io` holds stdout, stderr and whether stdout is a color terminal, so tests can run this directly.
+export { UsageError, plainError, writeReport, requireFolder };
+
+// Returns an exit code, or for a long-running command such as a server, a promise of one.
 export function main(argv, io) {
   try {
+    if (argv.length > 0 && isCommand(argv[0])) return COMMANDS[argv[0]].run(argv.slice(1), io);
     const options = parseArguments(argv);
     if (options.help) {
-      io.stdout(HELP);
+      io.stdout(help());
       return 0;
     }
     if (options.version) {
@@ -312,7 +321,7 @@ export function main(argv, io) {
       throw new UsageError(options.positional.length === 0 ? "Give the built site folder to audit, such as: builtcheck dist" : `Give exactly one folder, not ${options.positional.length}`);
     }
     const format = options.format ?? "text";
-    if (!FORMATS.has(format)) throw new UsageError(`--format must be text, json, html, github or sarif, not "${format}"`);
+    if (!FORMAT_NAMES.includes(format)) throw new UsageError(`--format must be ${formatList()}, not "${format}"`);
     const maxWarnings = parseMaxWarnings(options["max-warnings"]);
     const folder = options.positional[0];
     const root = requireFolder(folder);
@@ -338,6 +347,11 @@ export function main(argv, io) {
     result.root = folder;
 
     const report = render(result, format, options, io);
+    const storeSettings = { ...(config?.store ?? {}), ...(options.store ? { path: options.store } : {}) };
+    if (options.save || storeSettings.save) {
+      const saved = saveRun(result, { root, folder, store: storeSettings, config });
+      io.stderr(`builtcheck: saved as run ${printable(saved.id)} in ${printable(saved.store)}\n`);
+    }
     const { errors, warnings } = result.summary;
     if (options.output) {
       writeReport(options.output, report, root);
@@ -354,7 +368,7 @@ export function main(argv, io) {
     if (maxWarnings !== null && warnings > maxWarnings) return 1;
     return 0;
   } catch (error) {
-    if (error instanceof UsageError || error instanceof ConfigError) {
+    if (error instanceof UsageError || error instanceof ConfigError || error instanceof StoreError) {
       io.stderr(`builtcheck: ${printable(error.message)}\n`);
       return 2;
     }

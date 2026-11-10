@@ -20,13 +20,14 @@ function allFiles(folder, found = []) {
 }
 
 test("the rule reference documents every rule with its default severity", () => {
-  const docs = readFileSync(join(REPO_ROOT, "docs", "rules.md"), "utf8");
+  const folder = join(REPO_ROOT, "docs", "rules");
+  const docs = readdirSync(folder).map((name) => readFileSync(join(folder, name), "utf8")).join("\n");
   for (const rule of allRules) {
-    assert.ok(docs.includes(`\`${rule.id}\``), `${rule.id} is missing from docs/rules.md`);
+    assert.ok(docs.includes(`\`${rule.id}\``), `${rule.id} is missing from docs/rules/`);
     const row = docs.split("\n").find((line) => line.includes(`\`${rule.id}\``) && line.startsWith("|"));
     assert.ok(row && row.includes(rule.severity), `${rule.id} should show severity ${rule.severity}`);
     for (const option of Object.keys(rule.options ?? {})) {
-      assert.ok(docs.includes(`\`${option}\``), `option ${option} of ${rule.id} is missing from docs/rules.md`);
+      assert.ok(docs.includes(`\`${option}\``), `option ${option} of ${rule.id} is missing from docs/rules/`);
     }
   }
 });
