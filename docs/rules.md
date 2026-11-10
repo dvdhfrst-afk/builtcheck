@@ -9,6 +9,8 @@ Each group has its own page, with a table of its rules and their options.
 | Group | Rule ids | Page |
 |---|---|---|
 | Foundation | `foundation/*` | [foundation](rules/foundation.md) |
+| Page metadata | `meta/*` | [meta](rules/meta.md) |
+| Languages and alternate versions | `i18n/*` | [i18n](rules/i18n.md) |
 | Structured data | `schema/*` | [schema](rules/schema.md) |
 | Links | `links/*` | [links](rules/links.md) |
 | Copy | `copy/*` | [copy](rules/copy.md) |
