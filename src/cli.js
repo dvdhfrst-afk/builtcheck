@@ -8,7 +8,7 @@ import { ConfigError, DEFAULT_SITE, readConfigFile } from "./engine/config.js";
 import { COMMANDS, isCommand } from "./commands/index.js";
 import { FORMAT_NAMES, FORMATS, formatList } from "./report/index.js";
 import { printable } from "./report/printable.js";
-import { saveRun, StoreError } from "./store/index.js";
+import { checkSaveTarget, saveRun, StoreError } from "./store/index.js";
 import { TASTE_RULES } from "./rules/taste.js";
 import { allRules } from "./rules/index.js";
 
@@ -41,6 +41,7 @@ Options:
   --skip <rules>             Do not run these rules
   --max-warnings <n>         Also fail if there are more than n warnings
   --save                     Save this run in the results store
+  --label <text>             Name the saved run, such as release-2.4
   --store <folder>           The results store folder (default: .builtcheck in the current folder)
   --quiet                    In text output, list errors only
   --all                      In text output, list every finding with nothing collapsed
@@ -60,7 +61,7 @@ Exit codes:
 
 class UsageError extends Error {}
 
-const VALUE_FLAGS = new Set(["format", "output", "config", "site-url", "base-path", "max-warnings", "explain", "store"]);
+const VALUE_FLAGS = new Set(["format", "output", "config", "site-url", "base-path", "max-warnings", "explain", "store", "label"]);
 const LIST_FLAGS = new Set(["only", "skip"]);
 const BOOLEAN_FLAGS = new Set(["no-config", "quiet", "all", "no-color", "list-rules", "print-config", "init", "version", "help", "save"]);
 
@@ -285,7 +286,7 @@ export function render(result, format, options, io) {
 }
 
 // `io` holds stdout, stderr and whether stdout is a color terminal, so tests can run this directly.
-export { UsageError, plainError, writeReport, requireFolder };
+export { UsageError, plainError, writeReport, requireFolder, isSameOrInside, reachedPath };
 
 // Returns an exit code, or for a long-running command such as a server, a promise of one.
 export function main(argv, io) {
@@ -335,7 +336,15 @@ export function main(argv, io) {
       }
     }
 
-    const result = audit(root, config, allRules, { only: options.only, skip: options.skip });
+    // Checked before the audit, so a long audit is not wasted on a store that would refuse it.
+    const selection = { only: options.only, skip: options.skip };
+    const storeSettings = { ...(config?.store ?? {}), ...(options.store ? { path: options.store } : {}) };
+    const saving = Boolean(options.save || storeSettings.save);
+    if (options.label && !saving) throw new UsageError("--label names a saved run, so it needs --save");
+    if (saving) checkSaveTarget({ root, store: storeSettings, config, selection, label: options.label });
+
+    const startedAt = Date.now();
+    const result = audit(root, config, allRules, selection);
     for (const { file, reason, incomplete } of result.skipped) {
       if (incomplete) io.stderr(`builtcheck: ${printable(file)}: ${printable(reason)}\n`);
     }
@@ -347,17 +356,17 @@ export function main(argv, io) {
     result.root = folder;
 
     const report = render(result, format, options, io);
-    const storeSettings = { ...(config?.store ?? {}), ...(options.store ? { path: options.store } : {}) };
-    if (options.save || storeSettings.save) {
-      const saved = saveRun(result, { root, folder, store: storeSettings, config });
-      io.stderr(`builtcheck: saved as run ${printable(saved.id)} in ${printable(saved.store)}\n`);
-    }
     const { errors, warnings } = result.summary;
     if (options.output) {
       writeReport(options.output, report, root);
       io.stdout(`${errors} error${errors === 1 ? "" : "s"}, ${warnings} warning${warnings === 1 ? "" : "s"}. Report written to ${printable(options.output)}\n`);
     } else {
       io.stdout(report);
+    }
+    // After the report, so a store that fails still leaves the findings shown.
+    if (saving) {
+      const saved = saveRun(result, { root, folder, store: storeSettings, config, selection, label: options.label, now: startedAt });
+      io.stderr(`builtcheck: saved as run ${printable(saved.id)} in ${printable(saved.store)}\n`);
     }
 
     if (!result.complete) {
