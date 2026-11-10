@@ -4,7 +4,7 @@
 import { accessSync, constants, existsSync, mkdirSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { audit, version } from "./audit.js";
-import { ConfigError, DEFAULT_SITE, readConfigFile } from "./engine/config.js";
+import { ConfigError, printableConfig, readConfigFile } from "./engine/config.js";
 import { COMMANDS, isCommand } from "./commands/index.js";
 import { FORMAT_NAMES, FORMATS, formatList } from "./report/index.js";
 import { printable } from "./report/printable.js";
@@ -117,14 +117,6 @@ function explainRule(id, write) {
     write(`\nOptions and their defaults:\n${JSON.stringify(rule.options, null, 2)}\n`);
   }
   write(`\nTo turn it off, or to change its severity or options, add it to "rules" in ${DEFAULT_CONFIG_FILE}:\n  "rules": { "${rule.id}": "off" }\n`);
-}
-
-function fullConfig() {
-  const rules = {};
-  for (const rule of allRules) {
-    rules[rule.id] = { severity: rule.severity, ...(rule.options ?? {}) };
-  }
-  return { site: DEFAULT_SITE, ignore: [], rules };
 }
 
 // A short file to start from, naming the rules that are matters of taste, since those are the
@@ -305,7 +297,7 @@ export function main(argv, io) {
       return 0;
     }
     if (options["print-config"]) {
-      io.stdout(`${JSON.stringify(fullConfig(), null, 2)}\n`);
+      io.stdout(`${JSON.stringify(printableConfig(loadConfig(options), allRules), null, 2)}\n`);
       return 0;
     }
     if (options.explain) {
