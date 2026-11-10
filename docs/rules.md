@@ -11,5 +11,8 @@ Each group has its own page, with a table of its rules and their options.
 | Foundation | `foundation/*` | [foundation](rules/foundation.md) |
 | Structured data | `schema/*` | [schema](rules/schema.md) |
 | Links | `links/*` | [links](rules/links.md) |
+| Assets | `assets/*` | [assets](rules/assets.md) |
+| Feeds | `feeds/*` | [feeds](rules/feeds.md) |
+| Web app manifest | `manifest/*` | [manifest](rules/manifest.md) |
 | Copy | `copy/*` | [copy](rules/copy.md) |
 | Style | `style/*` | [style](rules/style.md) |

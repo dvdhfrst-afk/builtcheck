@@ -1,5 +1,5 @@
 /* Traps: every declaration here looks suspicious to a naive scanner and is fine. */
-@font-face{font-family:"Body Sans";src:url(fonts/body.woff2) format("woff2"),url("data:font/woff2;base64,AAAA;BBBB") format("woff2")}
+@font-face{font-family:"Body Sans";font-display:swap;src:url(fonts/body.woff2) format("woff2"),url("data:font/woff2;base64,AAAA;BBBB") format("woff2")}
 :root{--tw-ring-offset-color:#fff;--ink:oklch(0.25 0.01 250);--paper:oklch(0.98 0.01 250)}
 body{font-family:"Body Sans",Inter,Roboto,sans-serif;color:var(--ink);background:var(--paper)}
 pre{font-family:ui-monospace,Menlo,"Roboto Mono",monospace}
